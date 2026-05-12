@@ -1,0 +1,98 @@
+import Foundation
+import AuthenticationServices
+import SwiftData
+
+@Observable
+@MainActor
+final class AuthService: NSObject {
+    enum State {
+        case unknown
+        case signedOut
+        case signedIn(appleUserID: String)
+    }
+
+    var state: State = .unknown
+    /// Last sign-in / revoke error surfaced for the UI.
+    var lastError: String?
+
+    /// The Notification token isn't actor-isolated so `deinit` (which is
+    /// implicitly nonisolated) can clean it up.
+    private nonisolated(unsafe) var revokeObserver: NSObjectProtocol?
+
+    func bootstrap() {
+        // Listen for system-level revocation (user toggled BudgetBot off in
+        // iCloud Settings → Sign in with Apple).
+        if revokeObserver == nil {
+            revokeObserver = NotificationCenter.default.addObserver(
+                forName: ASAuthorizationAppleIDProvider.credentialRevokedNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.signOut() }
+            }
+        }
+
+        if let id = KeychainService.shared.get(.appleUserID) {
+            ASAuthorizationAppleIDProvider().getCredentialState(forUserID: id) { [weak self] credState, _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    switch credState {
+                    case .authorized:
+                        self.state = .signedIn(appleUserID: id)
+                    case .revoked, .notFound, .transferred:
+                        KeychainService.shared.delete(.appleUserID)
+                        self.state = .signedOut
+                    @unknown default:
+                        self.state = .signedOut
+                    }
+                }
+            }
+        } else {
+            state = .signedOut
+        }
+    }
+
+    func handle(_ result: Result<ASAuthorization, Error>, context: ModelContext) {
+        switch result {
+        case .failure(let err):
+            lastError = err.localizedDescription
+        case .success(let auth):
+            guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+            let userID = cred.user
+            try? KeychainService.shared.set(userID, for: .appleUserID)
+
+            let descriptor = FetchDescriptor<UserProfile>(
+                predicate: #Predicate { $0.appleUserID == userID }
+            )
+            let existing = (try? context.fetch(descriptor))?.first
+            if let profile = existing {
+                if profile.email == nil, let e = cred.email { profile.email = e }
+                if profile.displayName == nil, let n = cred.fullName {
+                    profile.displayName = PersonNameComponentsFormatter().string(from: n)
+                }
+            } else {
+                let nameStr = cred.fullName.map { PersonNameComponentsFormatter().string(from: $0) }
+                let profile = UserProfile(
+                    appleUserID: userID,
+                    displayName: nameStr,
+                    email: cred.email
+                )
+                context.insert(profile)
+            }
+            try? context.save()
+            lastError = nil
+            state = .signedIn(appleUserID: userID)
+        }
+    }
+
+    func signOut() {
+        KeychainService.shared.delete(.appleUserID)
+        state = .signedOut
+    }
+
+    deinit {
+        if let obs = revokeObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+    }
+}

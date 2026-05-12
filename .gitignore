@@ -1,0 +1,46 @@
+# Xcode build output
+build/
+DerivedData/
+*.xcuserstate
+*.xcresult
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# XcodeGen — the .xcodeproj is generated from project.yml, never edit it by hand
+BudgetBot.xcodeproj/
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+Package.resolved
+.build/
+
+# CocoaPods / Carthage (not used today; future-proof)
+Pods/
+Carthage/Build/
+
+# fastlane (not used today)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local secrets — should never be checked in
+*.env
+secrets.local.*

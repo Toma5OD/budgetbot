@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-progress runs on a new push to the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build & test
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    env:
+      SIM_NAME: iPhone 16 Pro
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          # Prefer 16.4 for reproducibility, fall back to highest Xcode 16.x
+          # available on the runner. GitHub rotates these every few weeks.
+          if [ -d /Applications/Xcode_16.4.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app
+          else
+            latest=$(ls -d /Applications/Xcode_16.*.app 2>/dev/null | sort -V | tail -1)
+            if [ -z "$latest" ]; then
+              latest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+            fi
+            echo "Using $latest"
+            sudo xcode-select -s "$latest"
+          fi
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Boot simulator
+        run: |
+          # Pick the newest available runtime so we don't pin to a removed version.
+          DEVICE_ID=$(xcrun simctl list devices available -j |
+            python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime in sorted(data['devices'].keys(), reverse=True):
+              if 'iOS' not in runtime: continue
+              for d in data['devices'][runtime]:
+                  if d['name'] == '${{ env.SIM_NAME }}' and d.get('isAvailable', False):
+                      print(d['udid']); sys.exit(0)
+          ")
+          if [ -z "$DEVICE_ID" ]; then
+            echo "::error::No available '${{ env.SIM_NAME }}' simulator found"
+            xcrun simctl list devices available iOS
+            exit 1
+          fi
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+
+      - name: Build & test
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project BudgetBot.xcodeproj \
+            -scheme BudgetBot \
+            -sdk iphonesimulator \
+            -destination "id=$DEVICE_ID" \
+            -resultBundlePath TestResults.xcresult \
+            -enableCodeCoverage YES \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee xcodebuild.log
+
+      - name: Test result summary
+        if: always()
+        run: |
+          if [ -d TestResults.xcresult ]; then
+            xcrun xcresulttool get test-results summary \
+              --path TestResults.xcresult || true
+          fi
+
+      - name: Upload xcresult bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.xcresult
+          retention-days: 14
+
+      - name: Upload xcodebuild log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          retention-days: 14
