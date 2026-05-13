@@ -13,16 +13,12 @@ final class TransactionFXTests: XCTestCase {
     }
 
     func test_amountInBase_usesSnapshotWhenBaseMatches() {
-        // Snapshot says 1 USD = 0.90 EUR.
         let tx = Transaction(
             amount: 100, currency: "USD",
             fxRateToBase: Decimal(string: "0.90")!,
             fxBaseCurrency: "EUR"
         )
-        // Live rates would say 100 USD ≈ 90.9 EUR (100 / 1.10 * 1.0).
-        // We expect the snapshot: 100 * 0.90 = 90.
-        let result = tx.amountInBase("EUR", liveConvert: liveConvert)
-        XCTAssertEqual(result, 90)
+        XCTAssertEqual(tx.amountInBase("EUR", liveConvert: liveConvert), 90)
     }
 
     func test_amountInBase_ignoresSnapshotWhenBaseChanged() {
@@ -31,10 +27,7 @@ final class TransactionFXTests: XCTestCase {
             fxRateToBase: Decimal(string: "0.90")!,
             fxBaseCurrency: "EUR"
         )
-        // User now bases in GBP. The EUR-relative snapshot doesn't apply.
-        // Live: 100 USD -> 90.909... EUR -> 77.27... GBP
         let result = tx.amountInBase("GBP", liveConvert: liveConvert)
-        // Should be the live-converted value, not 100 × 0.90.
         XCTAssertNotEqual(result, 90)
         XCTAssertGreaterThan(result, 70)
         XCTAssertLessThan(result, 80)
@@ -42,9 +35,7 @@ final class TransactionFXTests: XCTestCase {
 
     func test_amountInBase_fallsBackToLiveWhenNoSnapshot() {
         let tx = Transaction(amount: 110, currency: "USD")
-        // 110 USD -> 100 EUR (rate 1.10)
-        let result = tx.amountInBase("EUR", liveConvert: liveConvert)
-        XCTAssertEqual(result, 100)
+        XCTAssertEqual(tx.amountInBase("EUR", liveConvert: liveConvert), 100)
     }
 
     func test_snapshotFX_sameCurrencyReturnsOne() {
@@ -54,11 +45,9 @@ final class TransactionFXTests: XCTestCase {
     }
 
     func test_snapshotFX_writesCanonicalRate() {
-        // 1 USD -> 0.909... EUR  (1 / 1.10)
         let snap = CaptureViewModel.snapshotFX(from: "USD", to: "EUR", rates: liveRates)
         XCTAssertEqual(snap.base, "EUR")
         guard let r = snap.rate else { return XCTFail("expected a rate") }
-        // Within a tiny tolerance.
         let target = Decimal(1) / Decimal(string: "1.10")!
         XCTAssertEqual(NSDecimalNumber(decimal: r).doubleValue,
                        NSDecimalNumber(decimal: target).doubleValue,
@@ -71,14 +60,38 @@ final class TransactionFXTests: XCTestCase {
         XCTAssertNil(snap.base)
     }
 
-    func test_amountInBase_baseCaseInsensitiveMatch() {
-        // Snapshot was taken with "eur" (shouldn't happen in code, defensive).
+    // MARK: - Splits-aware aggregation
+
+    func test_categorisedSlices_nonSplit_returnsSingleEntry() {
+        let cat = TxCategory(name: "Groceries", kind: .expense)
+        let tx = Transaction(amount: -50, currency: "EUR", payee: "Lidl", category: cat)
+        let slices = tx.categorisedSlices(in: "EUR", liveConvert: liveConvert)
+        XCTAssertEqual(slices.count, 1)
+        XCTAssertEqual(slices.first?.amount, -50)
+        XCTAssertEqual(slices.first?.category?.name, "Groceries")
+    }
+
+    func test_categorisedSlices_splitTransaction_returnsOnePerSplit() {
+        let food = TxCategory(name: "Groceries", kind: .expense)
+        let med  = TxCategory(name: "Health",    kind: .expense)
+        let tx = Transaction(amount: -32, currency: "EUR", payee: "Tesco")
+        tx.splits = [
+            Split(description: "Food",     amount: -25,  category: food, transaction: tx),
+            Split(description: "Medicine", amount: -7,   category: med,  transaction: tx)
+        ]
+        let slices = tx.categorisedSlices(in: "EUR", liveConvert: liveConvert)
+        XCTAssertEqual(slices.count, 2)
+        XCTAssertEqual(Set(slices.compactMap { $0.category?.name }), ["Groceries", "Health"])
+        XCTAssertEqual(slices.map { $0.amount }.reduce(Decimal(0), +), -32)
+    }
+
+    func test_categorisedSlices_appliesFXSnapshot() {
         let tx = Transaction(
-            amount: 100, currency: "USD",
-            fxRateToBase: Decimal(string: "0.90")!,
-            fxBaseCurrency: "eur"
+            amount: -100, currency: "USD", payee: "X",
+            fxRateToBase: Decimal(string: "0.9")!, fxBaseCurrency: "EUR"
         )
-        let result = tx.amountInBase("EUR", liveConvert: liveConvert)
-        XCTAssertEqual(result, 90)
+        tx.splits = [Split(description: "A", amount: -100, transaction: tx)]
+        let slices = tx.categorisedSlices(in: "EUR", liveConvert: liveConvert)
+        XCTAssertEqual(slices.first?.amount, -90)
     }
 }

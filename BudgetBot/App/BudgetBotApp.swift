@@ -5,6 +5,7 @@ import SwiftData
 struct BudgetBotApp: App {
     @State private var auth = AuthService()
     @State private var fx: FXService
+    @State private var theme = ThemeManager()
 
     init() {
         if UITestSupport.shouldResetState {
@@ -24,6 +25,8 @@ struct BudgetBotApp: App {
             RootView()
                 .environment(auth)
                 .environment(fx)
+                .environment(theme)
+                .tint(theme.current.tint)
                 .task {
                     auth.bootstrap()
                     await fx.refreshIfStale()

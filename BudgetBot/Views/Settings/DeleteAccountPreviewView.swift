@@ -10,10 +10,12 @@ struct DeleteAccountPreviewView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Query private var transactions: [Transaction]
+    @Query private var splits: [Split]
     @Query private var accounts: [Account]
     @Query private var recs: [AIRecommendation]
     @Query private var attachments: [Attachment]
     @Query private var profiles: [UserProfile]
+    @Query private var rules: [RecurringRule]
 
     @State private var typedConfirm: String = ""
     @State private var confirming = false
@@ -27,9 +29,11 @@ struct DeleteAccountPreviewView: View {
 
             Section("Data on this device") {
                 row("Transactions", transactions.count)
+                row("Splits", splits.count)
                 row("Accounts", accounts.count)
+                row("Subscriptions tracked", rules.count)
                 row("AI recommendations", recs.count)
-                row("Receipt attachments", attachments.count)
+                row("Stored attachments", attachments.count)
                 row("Your profile", profiles.count > 0 ? 1 : 0)
                 row("Your Anthropic API key", KeychainService.shared.get(.anthropicAPIKey) != nil ? 1 : 0)
             }

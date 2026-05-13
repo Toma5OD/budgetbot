@@ -19,6 +19,9 @@ final class TxCategory {
     @Relationship(deleteRule: .nullify, inverse: \Transaction.category)
     var transactions: [Transaction] = []
 
+    @Relationship(deleteRule: .nullify, inverse: \Split.category)
+    var splits: [Split] = []
+
     init(
         id: UUID = UUID(),
         name: String,

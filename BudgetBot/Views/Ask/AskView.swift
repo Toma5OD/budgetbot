@@ -144,18 +144,38 @@ struct AskView: View {
         vm.base = base
         vm.model = profiles.first?.aiModel ?? AIService.defaultModel
         vm.primingContext = buildPrimer(base: base)
-        vm.querySnapshot = transactions.map { tx in
-            TransactionQuery.Snapshot(
-                date: tx.date,
-                payee: tx.payee,
-                category: tx.category?.name ?? "Uncategorised",
-                account: tx.account?.name ?? "?",
-                amount: tx.amount,
-                currency: tx.currency,
-                amountInBase: tx.amountInBase(base) { fx.convert($0, from: $1, to: $2) },
-                baseCurrency: base
-            )
+        // Flatten transactions to one row per (transaction or split), so the
+        // AI can query by category at the right granularity.
+        var snaps: [TransactionQuery.Snapshot] = []
+        for tx in transactions {
+            let convert: (Decimal, String, String) -> Decimal = { fx.convert($0, from: $1, to: $2) }
+            if tx.splits.isEmpty {
+                snaps.append(.init(
+                    date: tx.date,
+                    payee: tx.payee,
+                    category: tx.category?.name ?? "Uncategorised",
+                    account: tx.account?.name ?? "?",
+                    amount: tx.amount,
+                    currency: tx.currency,
+                    amountInBase: tx.amountInBase(base, liveConvert: convert),
+                    baseCurrency: base
+                ))
+            } else {
+                for s in tx.splits {
+                    snaps.append(.init(
+                        date: s.date,
+                        payee: s.payee,
+                        category: s.category?.name ?? "Uncategorised",
+                        account: s.account?.name ?? "?",
+                        amount: s.amount,
+                        currency: s.currency,
+                        amountInBase: s.amountInBase(base, liveConvert: convert),
+                        baseCurrency: base
+                    ))
+                }
+            }
         }
+        vm.querySnapshot = snaps
     }
 
     private func buildPrimer(base: String) -> String {

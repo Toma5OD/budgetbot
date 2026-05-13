@@ -17,7 +17,7 @@ final class CaptureViewModel {
     var images: [UIImage] = []
     var pdfs: [(Data, String)] = []
     var textNote: String = ""
-    var defaultCurrency: String = "USD"
+    var defaultCurrency: String = "EUR"
     var aiModel: String = AIService.defaultModel
 
     private var inflight: Task<Void, Never>?
@@ -41,9 +41,8 @@ final class CaptureViewModel {
         if case .extracting = stage { stage = .idle }
     }
 
-    // MARK: - Pending share-extension intake
+    // MARK: - Pending intake from Share Extension
 
-    /// Drain pending items written by the Share Extension into our input buffers.
     func ingestPending() {
         for item in PendingCaptureStore.pending() {
             switch item.kind {
@@ -79,8 +78,6 @@ final class CaptureViewModel {
             return
         }
         stage = .extracting
-        let captured = inputs
-        let currency = defaultCurrency
 
         let accountContexts: [AccountContext] = accounts.map {
             AccountContext(name: $0.name, kind: $0.kind.rawValue, currency: $0.currency)
@@ -88,6 +85,8 @@ final class CaptureViewModel {
         let dupSnapshot = existing.map {
             DuplicateDetector.Existing(id: $0.id, date: $0.date, amount: $0.amount, payee: $0.payee)
         }
+        let captured = inputs
+        let currency = defaultCurrency
 
         let task = Task<Void, Never> { [weak self] in
             do {
@@ -121,9 +120,9 @@ final class CaptureViewModel {
 
     // MARK: - Commit
 
-    /// Persist confirmed drafts as Transactions. `defaultAccount` is used for
-    /// drafts without a matching `accountHint`. Snapshots the FX rate at commit
-    /// time so historical Net Worth survives rate changes.
+    /// Persist confirmed drafts as Transactions, splitting into `Split` rows
+    /// when the AI returned per-item categories that disagree with the
+    /// headline. FX is snapshotted at commit time.
     func commit(
         drafts: [ExtractedDraft],
         defaultAccount: Account,
@@ -133,27 +132,27 @@ final class CaptureViewModel {
         fxRates: [String: Decimal],
         in context: ModelContext
     ) {
-        for draft in drafts {
-            let cat = Self.matchCategory(for: draft, in: categories)
+        for (idx, draft) in drafts.enumerated() {
+            let headlineCategory = Self.matchCategory(for: draft, in: categories)
             let acc = Self.matchAccount(for: draft, in: accounts) ?? defaultAccount
 
             let attachment: Attachment?
-            if let img = images.first, let jpeg = img.jpegData(compressionQuality: 0.7) {
+            if idx == 0, let img = images.first, let jpeg = img.jpegData(compressionQuality: 0.7) {
                 attachment = Attachment(kind: .image, data: jpeg)
-            } else if let (data, name) = pdfs.first {
+            } else if idx == 0, let (data, name) = pdfs.first {
                 attachment = Attachment(kind: .pdf, filename: name, data: data)
-            } else if !textNote.isEmpty {
+            } else if idx == 0, !textNote.isEmpty {
                 attachment = Attachment(kind: .text, text: textNote)
             } else {
                 attachment = nil
             }
 
-            // FX snapshot.
             let (snapRate, snapBase) = Self.snapshotFX(
                 from: draft.currency,
                 to: baseCurrency,
                 rates: fxRates
             )
+            let payment = Transaction.PaymentMethod(rawValue: draft.paymentMethod.rawValue) ?? .unknown
 
             let tx = Transaction(
                 date: draft.date,
@@ -163,33 +162,44 @@ final class CaptureViewModel {
                 note: draft.note,
                 confirmed: true,
                 aiExtracted: true,
+                paymentMethod: payment,
                 fxRateToBase: snapRate,
                 fxBaseCurrency: snapBase,
                 account: acc,
-                category: cat,
+                category: headlineCategory,
                 attachment: attachment
             )
             context.insert(tx)
+
+            // Only persist line items as Splits if the AI captured per-item
+            // categories that meaningfully disagree with the headline.
+            // Otherwise this is a single-category transaction and the
+            // line-items are just decoration on the receipt.
+            let lineCategoryNames = Set(draft.lineItems.compactMap { $0.category?.lowercased() })
+            let headlineName = headlineCategory?.name.lowercased()
+            let isMulticat = lineCategoryNames.count > 1
+                || (lineCategoryNames.count == 1 && lineCategoryNames.first != headlineName)
+
+            if isMulticat && !draft.lineItems.isEmpty {
+                for li in draft.lineItems {
+                    let cat = li.category.flatMap { name in
+                        categories.first { $0.name.lowercased() == name.lowercased() }
+                    } ?? headlineCategory
+                    let signed = draft.amount < 0 ? -abs(li.amount) : abs(li.amount)
+                    let split = Split(
+                        description: li.description,
+                        amount: signed,
+                        category: cat,
+                        transaction: tx
+                    )
+                    context.insert(split)
+                }
+                // Clear headline category so aggregation always uses splits.
+                tx.category = nil
+            }
         }
         try? context.save()
         reset()
-    }
-
-    /// Given a `from` currency and the user's `to` (base), compute the rate
-    /// 1×from→to and snapshot which base it was relative to. Returns nil if
-    /// either side is missing — caller falls back to live conversion forever.
-    nonisolated static func snapshotFX(
-        from: String,
-        to: String,
-        rates: [String: Decimal]
-    ) -> (rate: Decimal?, base: String?) {
-        let fromU = from.uppercased(), toU = to.uppercased()
-        if fromU == toU { return (Decimal(1), toU) }
-        let one = Decimal(1)
-        let converted = FXService.convert(one, from: fromU, to: toU, rates: rates)
-        // If convert returned the input untouched, rates were missing — bail.
-        guard converted != one || fromU == toU else { return (nil, nil) }
-        return (converted, toU)
     }
 
     // MARK: - Pure matchers (testable)
@@ -211,7 +221,7 @@ final class CaptureViewModel {
     }
 
     nonisolated static func matchAccount(for draft: ExtractedDraft, in accounts: [Account]) -> Account? {
-        // 1. AI's explicit account hint takes precedence.
+        // 1. Explicit account hint wins.
         if let hint = draft.accountHint?.trimmingCharacters(in: .whitespacesAndNewlines),
            !hint.isEmpty {
             let hintLower = hint.lowercased()
@@ -225,22 +235,32 @@ final class CaptureViewModel {
                 return partial
             }
         }
-        // 2. Payment-method hint: cash → first cash-type account.
+        // 2. Payment-method hint.
         switch draft.paymentMethod {
         case .cash:
-            if let cash = accounts.first(where: { $0.kind == .cash }) {
-                return cash
-            }
+            if let cash = accounts.first(where: { $0.kind == .cash }) { return cash }
         case .card:
-            // Prefer a credit/bank account that matches the currency.
             if let card = accounts.first(where: {
                 ($0.kind == .credit || $0.kind == .bank) && $0.currency == draft.currency
-            }) {
-                return card
-            }
+            }) { return card }
         case .unknown:
             break
         }
         return nil
+    }
+
+    /// Given `from`/`to` currency codes and a rate map, returns the rate
+    /// 1×from→to. `nil` when unknown.
+    nonisolated static func snapshotFX(
+        from: String,
+        to: String,
+        rates: [String: Decimal]
+    ) -> (rate: Decimal?, base: String?) {
+        let fromU = from.uppercased(), toU = to.uppercased()
+        if fromU == toU { return (Decimal(1), toU) }
+        let one = Decimal(1)
+        let converted = FXService.convert(one, from: fromU, to: toU, rates: rates)
+        guard converted != one || fromU == toU else { return (nil, nil) }
+        return (converted, toU)
     }
 }

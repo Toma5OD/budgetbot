@@ -21,10 +21,8 @@ final class AccountBalanceTests: XCTestCase {
         let a = Account(name: "Checking", kind: .bank, openingBalance: 1000)
         ctx.insert(a)
 
-        // Confirmed
         ctx.insert(Transaction(amount: -150, payee: "Rent", confirmed: true,  account: a))
         ctx.insert(Transaction(amount:  +50, payee: "Refund", confirmed: true,  account: a))
-        // Unconfirmed — should NOT count
         ctx.insert(Transaction(amount: -999, payee: "Pending", confirmed: false, account: a))
         try ctx.save()
 
@@ -41,5 +39,22 @@ final class AccountBalanceTests: XCTestCase {
         ctx.insert(Transaction(amount: -35, payee: "Lunch",  confirmed: true, account: wallet))
         try ctx.save()
         XCTAssertEqual(wallet.balance, 200 - 20 - 35)
+    }
+
+    func test_splitTransaction_totalEqualsSumOfAmount() throws {
+        let container = try PersistenceController.makeInMemory()
+        let ctx = container.mainContext
+
+        let a = Account(name: "Card", kind: .credit)
+        ctx.insert(a)
+
+        let tx = Transaction(amount: -32.5, payee: "Tesco", confirmed: true, account: a)
+        ctx.insert(tx)
+        ctx.insert(Split(description: "Food",     amount: -25,   transaction: tx))
+        ctx.insert(Split(description: "Medicine", amount: -7.5, transaction: tx))
+        try ctx.save()
+
+        XCTAssertEqual(a.balance, Decimal(string: "-32.5"))
+        XCTAssertEqual(tx.splits.count, 2)
     }
 }

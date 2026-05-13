@@ -1,7 +1,7 @@
 import Foundation
 
-/// Pure, testable transaction querying. The `query_transactions` AI tool calls
-/// into this. No `ModelContext`, no SwiftUI — just (snapshot in, filter out).
+/// Pure, testable transaction querying. The `query_transactions` AI tool
+/// calls into this. Operates on `Snapshot`s so it doesn't need SwiftData.
 struct TransactionQuery {
 
     /// What the AI sees on each row in the result.
@@ -10,7 +10,7 @@ struct TransactionQuery {
         let payee: String
         let category: String
         let account: String
-        let amount: Double        // in original currency, signed
+        let amount: Double        // signed, in original currency
         let currency: String
         let amount_in_base: Double?
         let base_currency: String?
@@ -28,7 +28,7 @@ struct TransactionQuery {
         var limit: Int?                 // default 100, max 200
     }
 
-    /// Snapshot of one transaction we can filter without touching SwiftData.
+    /// One row to filter, flattened from a `LineItem` + parent `Receipt`.
     struct Snapshot {
         let date: Date
         let payee: String

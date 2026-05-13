@@ -11,9 +11,11 @@ enum SchemaV1: VersionedSchema {
         Account.self,
         TxCategory.self,
         Transaction.self,
+        Split.self,
         Attachment.self,
         AIRecommendation.self,
-        FXRateSnapshot.self
+        FXRateSnapshot.self,
+        RecurringRule.self
     ]
 }
 

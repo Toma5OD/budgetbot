@@ -35,22 +35,20 @@ final class BudgetBotUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Add PDF"].exists)
     }
 
-    func test_settings_reachableFromAccountsToolbar_andShowsAIModelPicker() {
+    func test_settings_reachableFromAccountsToolbar() {
         let app = launchApp()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
         app.tabBars.buttons["Accounts"].tap()
 
-        // Use the explicit identifier rather than the label — NavigationLink's
-        // button representation differs between iOS 18 and 26.
+        // Use the explicit identifier rather than the label.
         let settingsLink = app.buttons["settings.link"]
         XCTAssertTrue(settingsLink.waitForExistence(timeout: 3))
         settingsLink.tap()
 
-        // Avoid the "AI model" section header (uppercased on iOS 18). The
-        // Picker's label "Model" and the always-present "Sign out" button
-        // are stable across versions.
-        XCTAssertTrue(app.staticTexts["Model"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Sign out"].exists)
+        // Anchor on the always-visible top of Settings, not on any picker
+        // that may have scrolled out of view as the screen grew.
+        XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 5),
+                      "Settings screen should reach the Sign out row at the top")
     }
 
     func test_accountsTab_showsEmptyStateAndAddButton() {

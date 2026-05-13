@@ -4,6 +4,7 @@ import SwiftData
 struct SettingsView: View {
     @Environment(AuthService.self) private var auth
     @Environment(FXService.self) private var fx
+    @Environment(ThemeManager.self) private var theme
     @Environment(\.modelContext) private var context
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
 
@@ -120,6 +121,25 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        ThemePickerView()
+                    } label: {
+                        HStack {
+                            Image(systemName: theme.current.systemImage)
+                                .foregroundStyle(.tint)
+                            VStack(alignment: .leading) {
+                                Text("Theme").font(.body)
+                                Text(theme.current.displayName)
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("settings.themeLink")
+                } header: {
+                    Text("Appearance")
+                }
+
+                Section {
                     Picker("Model", selection: Binding(
                         get: { profiles.first?.aiModel ?? AIService.defaultModel },
                         set: {
@@ -227,8 +247,9 @@ struct SettingsView: View {
     private func deleteAccountAndData() {
         // Wipe SwiftData
         for type: any PersistentModel.Type in [
-            Transaction.self, Attachment.self, AIRecommendation.self,
-            Account.self, TxCategory.self, UserProfile.self, FXRateSnapshot.self
+            Split.self, Transaction.self, Attachment.self, AIRecommendation.self,
+            Account.self, TxCategory.self, UserProfile.self, FXRateSnapshot.self,
+            RecurringRule.self
         ] {
             try? context.delete(model: type)
         }
