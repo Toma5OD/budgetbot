@@ -213,6 +213,7 @@ struct SettingsView: View {
                          destination: URL(string: "https://example.com/budgetbot/data-flow")!)
                 }
             }
+            .scrollContentBackground(.hidden)
             .navigationTitle("Settings")
             .confirmationDialog("Remove the API key?", isPresented: $showRemoveConfirm) {
                 Button("Remove", role: .destructive) {

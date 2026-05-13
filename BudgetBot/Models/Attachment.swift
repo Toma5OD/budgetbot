@@ -9,12 +9,12 @@ enum AttachmentKind: String, Codable {
 
 @Model
 final class Attachment {
-    @Attribute(.unique) var id: UUID
-    var kindRaw: String
+    var id: UUID = UUID()
+    var kindRaw: String = AttachmentKind.text.rawValue
     var filename: String?
     @Attribute(.externalStorage) var data: Data?
     var text: String?
-    var createdAt: Date
+    var createdAt: Date = Date.now
 
     init(
         id: UUID = UUID(),

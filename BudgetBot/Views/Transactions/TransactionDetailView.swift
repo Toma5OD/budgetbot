@@ -92,6 +92,7 @@ struct TransactionDetailView: View {
                 Toggle("Confirmed", isOn: $tx.confirmed)
             }
         }
+        .scrollContentBackground(.hidden)
         .navigationTitle(tx.payee)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

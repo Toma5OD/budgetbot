@@ -788,7 +788,7 @@ private struct SubscriptionRow: View {
 private struct RecommendationCard: View {
     let rec: AIRecommendation
     let currency: String
-    let theme: AppTheme
+    let theme: Theme
     var onDismiss: () -> Void
 
     var body: some View {

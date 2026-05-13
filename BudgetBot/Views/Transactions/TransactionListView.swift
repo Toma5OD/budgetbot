@@ -46,6 +46,7 @@ struct TransactionListView: View {
                 }
                 .animation(.snappy, value: mode)
             }
+            .scrollContentBackground(.hidden)
             .searchable(text: $search, prompt: "Search payees, items & notes")
             .navigationTitle("Activity")
             .navigationDestination(for: Transaction.self) { tx in

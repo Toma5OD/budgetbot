@@ -4,33 +4,25 @@ import SwiftData
 /// A money-movement event. Industry-standard personal-finance shape — one row
 /// per thing that happened, with optional `splits` when a single payment
 /// needs to be allocated across multiple categories.
-///
-/// `category` is the headline category for the whole transaction. When the
-/// transaction is split, `category` is ignored at aggregation time and each
-/// `Split.category` contributes its own slice (see
-/// `Transaction.categorisedAmounts(in:liveConvert:)`).
 @Model
 final class Transaction {
-    @Attribute(.unique) var id: UUID
-    var date: Date
+    var id: UUID = UUID()
+    var date: Date = Date.now
     /// Signed total in `currency`. Negative = money OUT, positive = money IN.
-    var amount: Decimal
-    var currency: String
-    var payee: String
+    var amount: Decimal = 0
+    var currency: String = "EUR"
+    var payee: String = ""
     var note: String?
-    var confirmed: Bool
-    var aiExtracted: Bool
-    var createdAt: Date
+    var confirmed: Bool = false
+    var aiExtracted: Bool = false
+    var createdAt: Date = Date.now
 
-    var paymentMethodRaw: String
+    var paymentMethodRaw: String = PaymentMethod.unknown.rawValue
 
-    // FX snapshot — captured at commit time so historical Net Worth survives
-    // ECB-rate drift.
+    // FX snapshot — captured at commit time so historical Net Worth survives drift.
     var fxRateToBase: Decimal?
     var fxBaseCurrency: String?
 
-    /// Pointer to the recurring rule we detected this transaction as part of.
-    /// `nil` for one-off purchases.
     var recurringRuleID: UUID?
 
     @Relationship var account: Account?
@@ -75,8 +67,6 @@ final class Transaction {
         self.createdAt = createdAt
     }
 
-    // MARK: - Payment method
-
     enum PaymentMethod: String, Codable, CaseIterable {
         case cash, card, unknown
         var displayName: String {
@@ -96,15 +86,10 @@ final class Transaction {
         set { paymentMethodRaw = newValue.rawValue }
     }
 
-    // MARK: - Derived
-
     var isExpense: Bool { amount < 0 }
     var absAmount: Decimal { amount < 0 ? -amount : amount }
     var isSplit: Bool { !splits.isEmpty }
 
-    /// Convert this transaction's amount to `base`. Prefers the snapshot
-    /// taken at commit time; falls back to live FX when the user has changed
-    /// base currency since.
     func amountInBase(_ base: String, liveConvert: (Decimal, String, String) -> Decimal) -> Decimal {
         if let rate = fxRateToBase,
            let snapBase = fxBaseCurrency,
@@ -114,12 +99,9 @@ final class Transaction {
         return liveConvert(amount, currency, base)
     }
 
-    /// One row per category contribution. For non-split transactions this is
-    /// a single (amount, category); for split transactions one entry per
-    /// split. Used by analytics, subscriptions, drilldowns.
     struct CategorisedSlice {
-        let description: String   // payee for non-split, item description for splits
-        let amount: Decimal       // in base currency
+        let description: String
+        let amount: Decimal
         let category: TxCategory?
     }
 
@@ -132,14 +114,13 @@ final class Transaction {
             )]
         }
         return splits.map { s in
-            let raw = s.amount
             let inBase: Decimal = {
                 if let rate = fxRateToBase,
                    let snapBase = fxBaseCurrency,
                    snapBase.uppercased() == base.uppercased() {
-                    return raw * rate
+                    return s.amount * rate
                 }
-                return liveConvert(raw, currency, base)
+                return liveConvert(s.amount, currency, base)
             }()
             return CategorisedSlice(
                 description: s.itemDescription,
@@ -150,17 +131,13 @@ final class Transaction {
     }
 }
 
-/// One row of a multi-category transaction. Only exists when the user (or AI)
-/// has chosen to split a single payment across categories. Equivalent to
-/// YNAB's "split" or Copilot's "split transaction" sub-row.
 @Model
 final class Split {
-    @Attribute(.unique) var id: UUID
-    var itemDescription: String
-    /// Signed amount in the parent transaction's `currency`.
-    var amount: Decimal
-    var quantity: Int
-    var createdAt: Date
+    var id: UUID = UUID()
+    var itemDescription: String = ""
+    var amount: Decimal = 0
+    var quantity: Int = 1
+    var createdAt: Date = Date.now
 
     @Relationship var category: TxCategory?
     @Relationship var transaction: Transaction?
@@ -183,8 +160,6 @@ final class Split {
         self.createdAt = createdAt
     }
 
-    /// Convenience accessors so split rows can render without dereferencing
-    /// the parent every time.
     var date: Date { transaction?.date ?? createdAt }
     var currency: String { transaction?.currency ?? "EUR" }
     var payee: String { transaction?.payee ?? "" }

@@ -2,20 +2,20 @@ import Foundation
 import SwiftData
 
 enum RecommendationKind: String, Codable {
-    case silly       // questionable / wasteful spending
-    case savings     // savings opportunities
-    case general     // general advice
+    case silly
+    case savings
+    case general
 }
 
 @Model
 final class AIRecommendation {
-    @Attribute(.unique) var id: UUID
-    var kindRaw: String
-    var title: String
-    var body: String
+    var id: UUID = UUID()
+    var kindRaw: String = RecommendationKind.general.rawValue
+    var title: String = ""
+    var body: String = ""
     var estimatedMonthlySavings: Decimal?
-    var dismissed: Bool
-    var createdAt: Date
+    var dismissed: Bool = false
+    var createdAt: Date = Date.now
 
     init(
         id: UUID = UUID(),

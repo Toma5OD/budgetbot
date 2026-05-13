@@ -31,6 +31,7 @@ struct ProfileView: View {
             }
             .padding()
         }
+        .scrollIndicators(.hidden)
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Display name", isPresented: $editingName) {

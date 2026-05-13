@@ -33,14 +33,14 @@ enum AccountKind: String, Codable, CaseIterable, Identifiable {
 
 @Model
 final class Account {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var kindRaw: String
+    var id: UUID = UUID()
+    var name: String = ""
+    var kindRaw: String = AccountKind.bank.rawValue
     var institution: String?
-    var currency: String
-    var openingBalance: Decimal
-    var archived: Bool
-    var createdAt: Date
+    var currency: String = "EUR"
+    var openingBalance: Decimal = 0
+    var archived: Bool = false
+    var createdAt: Date = Date.now
 
     @Relationship(deleteRule: .cascade, inverse: \Transaction.account)
     var transactions: [Transaction] = []

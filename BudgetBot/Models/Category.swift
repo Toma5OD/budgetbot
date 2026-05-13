@@ -9,12 +9,12 @@ enum CategoryKind: String, Codable, CaseIterable, Identifiable {
 
 @Model
 final class TxCategory {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var kindRaw: String
-    var emoji: String
-    var colorHex: String
-    var createdAt: Date
+    var id: UUID = UUID()
+    var name: String = ""
+    var kindRaw: String = CategoryKind.expense.rawValue
+    var emoji: String = "🧾"
+    var colorHex: String = "#34A853"
+    var createdAt: Date = Date.now
 
     @Relationship(deleteRule: .nullify, inverse: \Transaction.category)
     var transactions: [Transaction] = []

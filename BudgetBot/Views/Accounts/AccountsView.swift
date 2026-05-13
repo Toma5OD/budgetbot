@@ -16,6 +16,7 @@ struct AccountsView: View {
         NavigationStack {
             List {
                 Section("Net Worth") {
+
                     HStack {
                         Text("Total in \(base)")
                         Spacer()
@@ -45,6 +46,7 @@ struct AccountsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
             .navigationTitle("Accounts")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

@@ -16,7 +16,7 @@ struct RootView: View {
                     ProgressView().controlSize(.large)
                 case .signedOut:
                     SignInView()
-                case .signedIn:
+                case .signedIn(_, _):
                     GatedRoot()
                         .task { seedDefaultCategoriesIfNeeded() }
                 }

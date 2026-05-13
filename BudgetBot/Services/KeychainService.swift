@@ -6,6 +6,7 @@ import Security
 enum KeychainKey: String {
     case anthropicAPIKey = "com.budgetbot.anthropicAPIKey"
     case appleUserID     = "com.budgetbot.appleUserID"
+    case googleUserID    = "com.budgetbot.googleUserID"
 }
 
 struct KeychainService {

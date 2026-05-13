@@ -6,17 +6,17 @@ import SwiftData
 /// and persisted so the user can confirm / dismiss without re-detection.
 @Model
 final class RecurringRule {
-    @Attribute(.unique) var id: UUID
-    var payeePattern: String          // normalised payee match key
-    var displayName: String           // shown in UI; defaults to payee
-    var expectedAmount: Decimal       // signed (negative for expenses)
-    var currency: String
-    var cadenceRaw: String            // "monthly" | "weekly" | "yearly"
-    var firstSeen: Date
-    var lastSeen: Date
-    var occurrences: Int
-    var dismissed: Bool
-    var createdAt: Date
+    var id: UUID = UUID()
+    var payeePattern: String = ""
+    var displayName: String = ""
+    var expectedAmount: Decimal = 0
+    var currency: String = "EUR"
+    var cadenceRaw: String = Cadence.monthly.rawValue
+    var firstSeen: Date = Date.now
+    var lastSeen: Date = Date.now
+    var occurrences: Int = 0
+    var dismissed: Bool = false
+    var createdAt: Date = Date.now
 
     @Relationship var category: TxCategory?
     @Relationship var account: Account?
@@ -57,7 +57,6 @@ final class RecurringRule {
         var displayName: String {
             switch self { case .weekly: "Weekly"; case .monthly: "Monthly"; case .yearly: "Yearly" }
         }
-        /// Approximate days per occurrence; used to estimate monthly cost.
         var days: Double {
             switch self { case .weekly: 7; case .monthly: 30.44; case .yearly: 365.25 }
         }
@@ -68,7 +67,6 @@ final class RecurringRule {
         set { cadenceRaw = newValue.rawValue }
     }
 
-    /// Estimated cost / income per calendar month, in `currency`.
     var monthlyEstimate: Decimal {
         let perMonth = 30.44 / cadence.days
         return expectedAmount * Decimal(perMonth)

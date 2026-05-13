@@ -22,6 +22,8 @@ struct BudgetBotApp: App {
                 .environment(fx)
                 .environment(theme)
                 .tint(theme.current.tint)
+                .preferredColorScheme(theme.current.preferredScheme)
+                .themedBackground(theme.current)
                 .task {
                     auth.bootstrap()
                     await fx.refreshIfStale()

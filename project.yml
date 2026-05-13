@@ -41,6 +41,11 @@ targets:
       properties:
         com.apple.developer.applesignin:
           - Default
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.dev.toma5od.BudgetBot
+        com.apple.developer.icloud-services:
+          - CloudKit
+        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)dev.toma5od.BudgetBot
         com.apple.security.application-groups:
           - group.dev.toma5od.BudgetBot
         keychain-access-groups:

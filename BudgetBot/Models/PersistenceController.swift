@@ -80,28 +80,35 @@ enum PersistenceController {
         let schema = Schema(versionedSchema: SchemaV1.self)
         let config: ModelConfiguration
         if inMemory {
+            // No CloudKit when in-memory — tests stay isolated and offline.
             config = ModelConfiguration(
                 "BudgetBotStore",
                 schema: schema,
                 isStoredInMemoryOnly: true,
-                allowsSave: true
+                allowsSave: true,
+                cloudKitDatabase: .none
             )
         } else if let url = storeURL {
-            // Pin the URL so SwiftData can't reroute into the App Group container.
+            // Pin the URL so SwiftData can't reroute into the App Group
+            // container. `.automatic` enables CloudKit private-database sync
+            // when the iCloud entitlement is registered with the team AND the
+            // user is signed into iCloud on the device. Falls back to
+            // local-only otherwise — Sim users without iCloud just see a
+            // single-device app.
             config = ModelConfiguration(
                 "BudgetBotStore",
                 schema: schema,
                 url: url,
-                allowsSave: true
+                allowsSave: true,
+                cloudKitDatabase: .automatic
             )
         } else {
-            // Fallback to default behaviour if we somehow can't resolve
-            // Application Support. Shouldn't happen on iOS.
             config = ModelConfiguration(
                 "BudgetBotStore",
                 schema: schema,
                 isStoredInMemoryOnly: false,
-                allowsSave: true
+                allowsSave: true,
+                cloudKitDatabase: .automatic
             )
         }
         return try ModelContainer(

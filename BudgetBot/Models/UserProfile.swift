@@ -3,17 +3,20 @@ import SwiftData
 
 @Model
 final class UserProfile {
-    @Attribute(.unique) var id: UUID
-    var appleUserID: String
+    var id: UUID = UUID()
+    var appleUserID: String = ""
     var displayName: String?
     var email: String?
     /// Currency used by default when adding a new account / capturing a tx.
-    var defaultCurrency: String
+    var defaultCurrency: String = "EUR"
     /// Currency in which Net Worth, Analytics totals and budget are expressed.
-    var baseCurrency: String
+    var baseCurrency: String = "EUR"
     var monthlyBudget: Decimal?
-    var aiModel: String
-    var createdAt: Date
+    var aiModel: String = "claude-sonnet-4-6"
+    /// Which OAuth provider the user originally signed in with.
+    /// Values: "apple", "google". Defaults to apple for legacy rows.
+    var authProvider: String = "apple"
+    var createdAt: Date = Date.now
 
     init(
         id: UUID = UUID(),
@@ -24,6 +27,7 @@ final class UserProfile {
         baseCurrency: String? = nil,
         monthlyBudget: Decimal? = nil,
         aiModel: String = AIService.defaultModel,
+        authProvider: String = "apple",
         createdAt: Date = .now
     ) {
         self.id = id
@@ -34,6 +38,7 @@ final class UserProfile {
         self.baseCurrency = baseCurrency ?? defaultCurrency
         self.monthlyBudget = monthlyBudget
         self.aiModel = aiModel
+        self.authProvider = authProvider
         self.createdAt = createdAt
     }
 }
