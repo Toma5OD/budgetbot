@@ -75,7 +75,7 @@ open BudgetBot.xcodeproj
 ```
 
 In Xcode, set your team under **Signing & Capabilities** for both
-`BudgetBot` and `ShareExtension` targets (the App Group `group.com.budgetbot.shared`
+`BudgetBot` and `ShareExtension` targets (the App Group `group.dev.toma5od.BudgetBot`
 needs to be registered with the team). Run on a device or the iOS 17+
 simulator. Sign in with Apple and the document scanner require a real device
 for the full flow.

@@ -20,7 +20,7 @@ The following data lives on your device only:
 | Accounts, transactions, categories    | SwiftData on-disk store                  |
 | Receipt images / PDFs you upload      | SwiftData `Attachment.data` (encrypted at rest with iOS data protection) |
 | AI recommendations                    | SwiftData                                |
-| Pending share-sheet items             | App Group container (`group.com.budgetbot.shared`) |
+| Pending share-sheet items             | App Group container (`group.dev.toma5od.BudgetBot`) |
 
 ## What leaves your device
 

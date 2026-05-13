@@ -5,5 +5,5 @@ import Foundation
 enum SharedConfig {
     /// App Group container used to hand attachments from the Share Extension
     /// to the main app. MUST match the entitlement files.
-    static let appGroupID = "group.com.budgetbot.shared"
+    static let appGroupID = "group.dev.toma5od.BudgetBot"
 }

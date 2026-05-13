@@ -12,7 +12,7 @@ explicitly updated in the same commit**.
   .active`. Has no API key access of its own and never calls the network.
 - **BudgetBotTests** — XCTest unit tests. Uses an in-memory `ModelContainer`.
 
-App Group: `group.com.budgetbot.shared` (shared between BudgetBot and
+App Group: `group.dev.toma5od.BudgetBot` (shared between BudgetBot and
 ShareExtension).
 
 ## Layer responsibilities

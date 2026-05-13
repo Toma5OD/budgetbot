@@ -8,11 +8,11 @@
     </array>
     <key>com.apple.security.application-groups</key>
     <array>
-        <string>group.com.budgetbot.shared</string>
+        <string>group.dev.toma5od.BudgetBot</string>
     </array>
     <key>keychain-access-groups</key>
     <array>
-        <string>$(AppIdentifierPrefix)com.budgetbot.BudgetBot</string>
+        <string>$(AppIdentifierPrefix)dev.toma5od.BudgetBot</string>
     </array>
 </dict>
 </plist>
