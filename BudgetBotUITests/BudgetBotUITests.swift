@@ -39,10 +39,18 @@ final class BudgetBotUITests: XCTestCase {
         let app = launchApp()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
         app.tabBars.buttons["Accounts"].tap()
-        app.buttons["Settings"].tap()  // gear in top-left toolbar
 
-        XCTAssertTrue(app.staticTexts["Model"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["AI model"].exists)
+        // Use the explicit identifier rather than the label — NavigationLink's
+        // button representation differs between iOS 18 and 26.
+        let settingsLink = app.buttons["settings.link"]
+        XCTAssertTrue(settingsLink.waitForExistence(timeout: 3))
+        settingsLink.tap()
+
+        // Avoid the "AI model" section header (uppercased on iOS 18). The
+        // Picker's label "Model" and the always-present "Sign out" button
+        // are stable across versions.
+        XCTAssertTrue(app.staticTexts["Model"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Sign out"].exists)
     }
 
     func test_accountsTab_showsEmptyStateAndAddButton() {
@@ -50,7 +58,10 @@ final class BudgetBotUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
         app.tabBars.buttons["Accounts"].tap()
 
-        XCTAssertTrue(app.staticTexts["Net Worth"].waitForExistence(timeout: 3))
+        // Avoid asserting on the "Net Worth" Section header — iOS uppercases
+        // section headers in some styles/versions ("NET WORTH"), so match the
+        // row body text instead, which is case-stable across iOS releases.
+        XCTAssertTrue(app.staticTexts["Total in USD"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Add account"].exists)
     }
 
