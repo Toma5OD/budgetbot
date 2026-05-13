@@ -6,6 +6,7 @@ struct BudgetBotApp: App {
     @State private var auth = AuthService()
     @State private var fx: FXService
     @State private var theme = ThemeManager()
+    @State private var notifs = NotificationStore()
 
     init() {
         if UITestSupport.shouldResetState {
@@ -21,6 +22,7 @@ struct BudgetBotApp: App {
                 .environment(auth)
                 .environment(fx)
                 .environment(theme)
+                .environment(notifs)
                 .tint(theme.current.tint)
                 .preferredColorScheme(theme.current.preferredScheme)
                 .themedBackground(theme.current)

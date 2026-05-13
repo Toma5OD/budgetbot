@@ -51,6 +51,7 @@ struct CaptureView: View {
                 }
             }
             .navigationTitle("Capture")
+            .appHeaderToolbar()
             .onAppear { hydrate() }
             .onChange(of: scenePhase) { _, new in
                 if new == .active { vm.ingestPending() }

@@ -85,6 +85,7 @@ struct AskView: View {
                 .padding()
             }
             .navigationTitle("Ask")
+            .appHeaderToolbar()
             .toolbar {
                 if !vm.turns.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {

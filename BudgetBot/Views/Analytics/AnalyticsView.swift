@@ -73,6 +73,7 @@ struct AnalyticsView: View {
                 .animation(.snappy, value: range)
             }
             .navigationTitle("Analytics")
+            .appHeaderToolbar()
             .onAppear {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
                     appearAnimation = true

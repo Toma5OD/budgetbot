@@ -49,6 +49,7 @@ struct TransactionListView: View {
             .scrollContentBackground(.hidden)
             .searchable(text: $search, prompt: "Search payees, items & notes")
             .navigationTitle("Activity")
+            .appHeaderToolbar()
             .navigationDestination(for: Transaction.self) { tx in
                 TransactionDetailView(tx: tx)
             }

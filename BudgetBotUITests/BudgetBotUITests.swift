@@ -16,7 +16,7 @@ final class BudgetBotUITests: XCTestCase {
     func test_tabBarIsVisible_andAllTabsExist() {
         let app = launchApp()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
-        for tab in ["Capture", "Activity", "Ask", "Accounts", "Analytics"] {
+        for tab in ["Home", "Activity", "Capture", "Analytics", "Ask"] {
             XCTAssertTrue(
                 app.tabBars.buttons[tab].exists,
                 "Tab \(tab) should exist"
@@ -24,44 +24,56 @@ final class BudgetBotUITests: XCTestCase {
         }
     }
 
+    func test_home_isFirstTab_andShowsGreeting() {
+        let app = launchApp()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+        // Home tab should already be selected on launch. Greeting starts with "Good ".
+        let predicate = NSPredicate(format: "label BEGINSWITH 'Good'")
+        XCTAssertTrue(app.staticTexts.element(matching: predicate).waitForExistence(timeout: 3))
+    }
+
+    func test_headerToolbar_hasProfileBellAndSettings_onEveryTab() {
+        let app = launchApp()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+
+        for tab in ["Home", "Activity", "Analytics", "Ask"] {
+            app.tabBars.buttons[tab].tap()
+            XCTAssertTrue(app.buttons["Profile"].waitForExistence(timeout: 3),
+                          "Profile button should exist on \(tab) tab")
+            XCTAssertTrue(app.buttons["Notifications"].exists,
+                          "Notifications bell should exist on \(tab) tab")
+            XCTAssertTrue(app.buttons["Settings"].exists,
+                          "Settings gear should exist on \(tab) tab")
+        }
+    }
+
+    func test_settings_reachableFromAnyTabsToolbar() {
+        let app = launchApp()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+        app.buttons["Settings"].tap()
+        // Settings opens as a sheet. Sign out row is always visible at the top
+        // of the Account section.
+        XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 5))
+    }
+
+    func test_notificationsCenter_opensFromBell() {
+        let app = launchApp()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+        app.buttons["Notifications"].tap()
+        // Empty state title or the navigation bar title — either is fine.
+        let appeared = app.staticTexts["You're all caught up"].waitForExistence(timeout: 3)
+            || app.navigationBars["Notifications"].waitForExistence(timeout: 3)
+        XCTAssertTrue(appeared, "Notifications sheet should open")
+    }
+
     func test_captureTab_showsInputTiles() {
         let app = launchApp()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
         app.tabBars.buttons["Capture"].tap()
 
-        // The four input tiles are buttons in the LazyVGrid.
         XCTAssertTrue(app.buttons["Scan Receipt"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Camera"].exists)
         XCTAssertTrue(app.buttons["Add PDF"].exists)
-    }
-
-    func test_settings_reachableFromAccountsToolbar() {
-        let app = launchApp()
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
-        app.tabBars.buttons["Accounts"].tap()
-
-        // Use the explicit identifier rather than the label.
-        let settingsLink = app.buttons["settings.link"]
-        XCTAssertTrue(settingsLink.waitForExistence(timeout: 3))
-        settingsLink.tap()
-
-        // Anchor on the always-visible top of Settings, not on any picker
-        // that may have scrolled out of view as the screen grew.
-        XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 5),
-                      "Settings screen should reach the Sign out row at the top")
-    }
-
-    func test_accountsTab_showsEmptyStateAndAddButton() {
-        let app = launchApp()
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
-        app.tabBars.buttons["Accounts"].tap()
-
-        // Avoid asserting on "Total in USD" or "Net Worth" — both vary across
-        // locales and iOS section-header styles. The Add-account button is the
-        // canonical proof we landed on the right screen.
-        XCTAssertTrue(app.buttons["Add account"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["Settings"].exists,
-                      "Gear in accounts toolbar should reach Settings")
     }
 
     func test_askTab_showsSuggestedQuestions() {
@@ -73,27 +85,27 @@ final class BudgetBotUITests: XCTestCase {
         XCTAssertTrue(app.textFields["Question"].exists)
     }
 
-    func test_addAccount_endToEnd() {
+    func test_addAccount_fromHomeStrip() {
         let app = launchApp()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
-        app.tabBars.buttons["Accounts"].tap()
-        app.buttons["Add account"].tap()
+        // Home is the default tab on launch.
+
+        // Add-account button in the Accounts strip header on Home.
+        let addButton = app.buttons["home.addAccount"]
+        XCTAssertTrue(addButton.waitForExistence(timeout: 3))
+        addButton.tap()
 
         let nameField = app.textFields["Name"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 3))
-
-        // Force focus reliably across simulator + hardware-keyboard combos.
         nameField.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        // Retry if focus didn't take.
         if app.keyboards.firstMatch.waitForExistence(timeout: 1) == false {
             nameField.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
         nameField.typeText("Wallet")
 
-        // The Save button title can collide with toolbar Save in other forms;
-        // scope to the navigation bar of the modal.
         app.navigationBars["New account"].buttons["Save"].tap()
 
+        // Account should now appear as a tile on Home.
         XCTAssertTrue(app.staticTexts["Wallet"].waitForExistence(timeout: 3))
     }
 }
