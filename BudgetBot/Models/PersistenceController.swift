@@ -25,36 +25,58 @@ enum BudgetBotMigrationPlan: SchemaMigrationPlan {
 }
 
 enum PersistenceController {
-    /// Default on-disk store living under the app's Application Support directory.
+    private static let storeFilename = "BudgetBotStore.store"
+
+    /// Default on-disk store. If the store on disk doesn't match the current
+    /// schema (we're pre-1.0, models are still evolving), wipe it and retry
+    /// rather than crashing the user. **Drop this fallback after launch** —
+    /// at that point a schema change must come with a real `MigrationStage`.
     @MainActor
     static let live: ModelContainer = {
         do {
-            let schema = Schema(versionedSchema: SchemaV1.self)
-            let config = ModelConfiguration(
-                "BudgetBotStore",
-                schema: schema,
-                isStoredInMemoryOnly: false,
-                allowsSave: true
-            )
-            return try ModelContainer(
-                for: schema,
-                migrationPlan: BudgetBotMigrationPlan.self,
-                configurations: [config]
-            )
+            return try buildContainer(inMemory: false)
         } catch {
-            fatalError("Failed to build live ModelContainer: \(error)")
+            print("⚠️ ModelContainer failed to load (pre-1.0 schema drift): \(error). Wiping store and retrying.")
+            wipeOnDiskStore()
+            do {
+                return try buildContainer(inMemory: false)
+            } catch {
+                fatalError("Could not rebuild ModelContainer after wipe: \(error)")
+            }
         }
     }()
 
     /// Fresh in-memory container — use in tests & previews.
     static func makeInMemory() throws -> ModelContainer {
+        try buildContainer(inMemory: true, name: "BudgetBotMemory")
+    }
+
+    // MARK: - Internals
+
+    private static func buildContainer(inMemory: Bool, name: String = "BudgetBotStore") throws -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV1.self)
         let config = ModelConfiguration(
-            "BudgetBotMemory",
+            name,
             schema: schema,
-            isStoredInMemoryOnly: true,
+            isStoredInMemoryOnly: inMemory,
             allowsSave: true
         )
-        return try ModelContainer(for: schema, configurations: [config])
+        return try ModelContainer(
+            for: schema,
+            migrationPlan: BudgetBotMigrationPlan.self,
+            configurations: [config]
+        )
+    }
+
+    /// Removes the on-disk SQLite store and its WAL/SHM siblings. Used by the
+    /// pre-1.0 schema-drift recovery in `live` and by UI-test reset.
+    static func wipeOnDiskStore() {
+        let fm = FileManager.default
+        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else { return }
+        for suffix in ["", "-shm", "-wal"] {
+            let url = appSupport.appendingPathComponent("\(storeFilename)\(suffix)")
+            try? fm.removeItem(at: url)
+        }
     }
 }

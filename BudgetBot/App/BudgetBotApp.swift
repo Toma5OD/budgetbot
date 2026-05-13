@@ -9,12 +9,7 @@ struct BudgetBotApp: App {
 
     init() {
         if UITestSupport.shouldResetState {
-            // Wipe SwiftData store + pending captures so each UI test starts clean.
-            if let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-                try? FileManager.default.removeItem(at: url.appendingPathComponent("BudgetBotStore.store"))
-                try? FileManager.default.removeItem(at: url.appendingPathComponent("BudgetBotStore.store-shm"))
-                try? FileManager.default.removeItem(at: url.appendingPathComponent("BudgetBotStore.store-wal"))
-            }
+            PersistenceController.wipeOnDiskStore()
             PendingCaptureStore.clearAll()
         }
         _fx = State(initialValue: FXService(container: PersistenceController.live))
