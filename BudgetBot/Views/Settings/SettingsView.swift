@@ -1,6 +1,9 @@
 import SwiftUI
 import SwiftData
 
+/// Top-level Settings. Designed in the iOS Settings style: profile header
+/// card at the top, then sectioned cards of icon-led rows. Danger zone
+/// (sign out, delete) is isolated at the bottom.
 struct SettingsView: View {
     @Environment(AuthService.self) private var auth
     @Environment(FXService.self) private var fx
@@ -8,12 +11,307 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
 
-    @State private var newKey: String = ""
-    @State private var validating = false
-    @State private var savedToast: String?
-    @State private var saveError: String?
-    @State private var showRemoveConfirm = false
+    @State private var showSignOutConfirm = false
+    @State private var showRemoveKeyConfirm = false
     @State private var showAppleRevokeSheet = false
+    @State private var savedToast: String?
+
+    static let availableModels: [(String, String)] = [
+        ("claude-sonnet-4-6",          "Sonnet 4.6 · balanced"),
+        ("claude-opus-4-7",            "Opus 4.7 · highest quality"),
+        ("claude-haiku-4-5-20251001",  "Haiku 4.5 · cheapest & fastest")
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                profileHeader
+
+                section("Money") {
+                    NavigationLink {
+                        CurrencyPickerSheet(
+                            title: "Default currency",
+                            footer: "Used when adding accounts and capturing transactions.",
+                            selection: Binding(
+                                get: { profiles.first?.defaultCurrency ?? Currencies.localeDefault },
+                                set: {
+                                    profiles.first?.defaultCurrency = $0
+                                    try? context.save()
+                                }
+                            )
+                        )
+                    } label: {
+                        SettingsRow("Default currency",
+                                    subtitle: Currencies.by(code: profiles.first?.defaultCurrency ?? "EUR")?.name,
+                                    icon: "dollarsign.arrow.circlepath",
+                                    tint: .blue) {
+                            chevron(profiles.first?.defaultCurrency ?? "EUR")
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.defaultCurrency")
+
+                    RowDivider()
+
+                    NavigationLink {
+                        CurrencyPickerSheet(
+                            title: "Base currency",
+                            footer: "Net Worth and analytics roll up into this currency.",
+                            selection: Binding(
+                                get: { profiles.first?.baseCurrency ?? Currencies.localeDefault },
+                                set: {
+                                    profiles.first?.baseCurrency = $0
+                                    try? context.save()
+                                }
+                            )
+                        )
+                    } label: {
+                        SettingsRow("Base currency",
+                                    subtitle: Currencies.by(code: profiles.first?.baseCurrency ?? "EUR")?.name,
+                                    icon: "globe",
+                                    tint: .teal) {
+                            chevron(profiles.first?.baseCurrency ?? "EUR")
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.baseCurrency")
+
+                    RowDivider()
+
+                    NavigationLink {
+                        BudgetEditor(profile: profiles.first)
+                    } label: {
+                        SettingsRow("Monthly budget",
+                                    subtitle: budgetSubtitle,
+                                    icon: "chart.pie.fill",
+                                    tint: .indigo) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    RowDivider()
+
+                    Button {
+                        Task { await fx.refresh() }
+                    } label: {
+                        SettingsRow("Exchange rates",
+                                    subtitle: fxSubtitle,
+                                    icon: "arrow.triangle.2.circlepath",
+                                    tint: .green) {
+                            if fx.isRefreshing {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                section("AI") {
+                    NavigationLink {
+                        AIModelPickerSheet(
+                            selection: Binding(
+                                get: { profiles.first?.aiModel ?? AIService.defaultModel },
+                                set: {
+                                    profiles.first?.aiModel = $0
+                                    try? context.save()
+                                }
+                            )
+                        )
+                    } label: {
+                        SettingsRow("Model",
+                                    subtitle: aiModelLabel,
+                                    icon: "brain.head.profile",
+                                    tint: .purple) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    RowDivider()
+
+                    NavigationLink {
+                        APIKeyManagerView(savedToast: $savedToast,
+                                          showRemoveConfirm: $showRemoveKeyConfirm)
+                    } label: {
+                        SettingsRow("API key",
+                                    subtitle: KeychainService.shared.get(.anthropicAPIKey) == nil
+                                        ? "Not set" : "Stored in Keychain",
+                                    icon: "key.fill",
+                                    tint: .orange) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                section("Appearance") {
+                    NavigationLink {
+                        ThemePickerView()
+                    } label: {
+                        SettingsRow("Theme",
+                                    subtitle: theme.current.displayName,
+                                    icon: theme.current.systemImage,
+                                    tint: theme.current.tint) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.themeLink")
+                }
+
+                section("Privacy") {
+                    Link(destination: URL(string: "https://example.com/budgetbot/privacy")!) {
+                        SettingsRow("Privacy policy",
+                                    icon: "hand.raised.fill",
+                                    tint: .gray) {
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    RowDivider()
+
+                    Link(destination: URL(string: "https://example.com/budgetbot/data-flow")!) {
+                        SettingsRow("Where my data goes",
+                                    icon: "network",
+                                    tint: .gray) {
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                section("Account") {
+                    Button {
+                        showSignOutConfirm = true
+                    } label: {
+                        SettingsRow("Sign out",
+                                    icon: "rectangle.portrait.and.arrow.right",
+                                    tint: .orange) { EmptyView() }
+                    }
+                    .buttonStyle(.plain)
+
+                    RowDivider()
+
+                    NavigationLink {
+                        DeleteAccountPreviewView(onConfirm: {
+                            deleteAccountAndData()
+                            showAppleRevokeSheet = true
+                        })
+                    } label: {
+                        SettingsRow("Delete account & all data",
+                                    icon: "trash.fill",
+                                    tint: .red) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.deleteAccount")
+                }
+
+                if let savedToast {
+                    Text(savedToast)
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 12)
+                }
+
+                Text("Version 0.1.0")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.bottom, 24)
+            }
+            .padding(.vertical, 8)
+        }
+        .scrollContentBackground(.hidden)
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.large)
+        .confirmationDialog("Sign out?", isPresented: $showSignOutConfirm) {
+            Button("Sign out", role: .destructive) { auth.signOut() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You can sign back in any time. Your data stays on this device.")
+        }
+        .sheet(isPresented: $showAppleRevokeSheet) {
+            AppleRevokeInstructionsSheet()
+        }
+    }
+
+    // MARK: - Header
+
+    private var profileHeader: some View {
+        NavigationLink {
+            ProfileView()
+        } label: {
+            HStack(spacing: 14) {
+                AvatarCircle(initials: initials, size: 56, tint: theme.current.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(profiles.first?.displayName ?? "Your profile")
+                        .font(.title3.bold())
+                    if let email = profiles.first?.email {
+                        Text(email).font(.subheadline).foregroundStyle(.secondary)
+                    } else {
+                        Text("Edit your info, lifetime stats, and budget")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(16)
+            .themedCard()
+            .padding(.horizontal, 16)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.profile")
+    }
+
+    // MARK: - Section wrapper
+
+    @ViewBuilder
+    private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: title)
+            VStack(spacing: 0) {
+                content()
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 16)
+            .themedCard()
+            .padding(.horizontal, 16)
+        }
+    }
+
+    // MARK: - Subviews
+
+    @ViewBuilder
+    private var chevronOnly: some View {
+        Image(systemName: "chevron.right")
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+    }
+
+    @ViewBuilder
+    private func chevron(_ value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(value)
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+    }
 
     private var initials: String {
         let name = profiles.first?.displayName ?? profiles.first?.email ?? "?"
@@ -22,231 +320,28 @@ struct SettingsView: View {
         return chars.isEmpty ? String(name.prefix(1)).uppercased() : chars.joined()
     }
 
-    static let availableModels: [(String, String)] = [
-        ("claude-sonnet-4-6",          "Sonnet 4.6 · balanced (default)"),
-        ("claude-opus-4-7",            "Opus 4.7 · highest quality"),
-        ("claude-haiku-4-5-20251001",  "Haiku 4.5 · cheapest & fastest")
-    ]
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Account") {
-                    NavigationLink {
-                        ProfileView()
-                    } label: {
-                        HStack(spacing: 12) {
-                            ZStack {
-                                Circle().fill(.tint).frame(width: 36, height: 36)
-                                Text(initials)
-                                    .font(.callout.bold())
-                                    .foregroundStyle(.white)
-                            }
-                            VStack(alignment: .leading) {
-                                Text(profiles.first?.displayName ?? "Profile")
-                                    .font(.body)
-                                if let email = profiles.first?.email {
-                                    Text(email).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    .accessibilityIdentifier("settings.profile")
-
-                    Button("Sign out", role: .destructive) {
-                        auth.signOut()
-                    }
-                }
-
-                Section {
-                    Picker("Default", selection: Binding(
-                        get: { profiles.first?.defaultCurrency ?? Currencies.localeDefault },
-                        set: {
-                            if let p = profiles.first { p.defaultCurrency = $0 }
-                            try? context.save()
-                        }
-                    )) {
-                        ForEach(Currencies.supported) { c in
-                            Text(c.displayLabel).tag(c.code)
-                        }
-                    }
-                    .accessibilityIdentifier("settings.defaultCurrency")
-
-                    Picker("Base (Net Worth & analytics)", selection: Binding(
-                        get: { profiles.first?.baseCurrency ?? Currencies.localeDefault },
-                        set: {
-                            if let p = profiles.first { p.baseCurrency = $0 }
-                            try? context.save()
-                        }
-                    )) {
-                        ForEach(Currencies.supported) { c in
-                            Text(c.displayLabel).tag(c.code)
-                        }
-                    }
-                    .accessibilityIdentifier("settings.baseCurrency")
-
-                    HStack {
-                        Text("FX rates")
-                        Spacer()
-                        if fx.isRefreshing {
-                            ProgressView()
-                        } else if let d = fx.fetchedAt {
-                            Text(d, style: .relative).foregroundStyle(.secondary)
-                        } else {
-                            Text("Never").foregroundStyle(.secondary)
-                        }
-                        Button {
-                            Task { await fx.refresh() }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        .accessibilityLabel("Refresh FX rates from ECB")
-                    }
-                } header: {
-                    Text("Currency")
-                } footer: {
-                    Text("Default is what new accounts use. Base is what Net Worth and analytics aggregate into. Receipt currencies are detected by the AI automatically.")
-                }
-
-                Section("Monthly budget") {
-                    TextField("Optional", text: Binding(
-                        get: { profiles.first?.monthlyBudget.map { "\($0)" } ?? "" },
-                        set: { newVal in
-                            guard let p = profiles.first else { return }
-                            p.monthlyBudget = Decimal(string: newVal)
-                            try? context.save()
-                        }
-                    ))
-                    .keyboardType(.decimalPad)
-                }
-
-                Section {
-                    NavigationLink {
-                        ThemePickerView()
-                    } label: {
-                        HStack {
-                            Image(systemName: theme.current.systemImage)
-                                .foregroundStyle(.tint)
-                            VStack(alignment: .leading) {
-                                Text("Theme").font(.body)
-                                Text(theme.current.displayName)
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .accessibilityIdentifier("settings.themeLink")
-                } header: {
-                    Text("Appearance")
-                }
-
-                Section {
-                    Picker("Model", selection: Binding(
-                        get: { profiles.first?.aiModel ?? AIService.defaultModel },
-                        set: {
-                            if let p = profiles.first { p.aiModel = $0 }
-                            try? context.save()
-                        }
-                    )) {
-                        ForEach(Self.availableModels, id: \.0) { id, label in
-                            Text(label).tag(id)
-                        }
-                    }
-                } header: {
-                    Text("AI model")
-                } footer: {
-                    Text("Costs and capability vary by model. Sonnet handles most receipts perfectly.")
-                }
-
-                Section {
-                    SecureField("Paste a new key to replace", text: $newKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .font(.system(.body, design: .monospaced))
-                    Button {
-                        Task { await validateAndSave() }
-                    } label: {
-                        HStack {
-                            if validating { ProgressView() }
-                            Text(validating ? "Validating…" : "Validate & replace key")
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty || validating)
-
-                    Button("Remove key", role: .destructive) {
-                        showRemoveConfirm = true
-                    }
-                    if let e = saveError {
-                        Text(e).font(.caption).foregroundStyle(.red)
-                    }
-                } header: {
-                    Text("Anthropic API key")
-                } footer: {
-                    Text("Stored in Keychain. Used only for requests to api.anthropic.com.")
-                }
-
-                if let savedToast {
-                    Section { Text(savedToast).foregroundStyle(.green) }
-                }
-
-                Section {
-                    NavigationLink {
-                        DeleteAccountPreviewView(
-                            onConfirm: {
-                                deleteAccountAndData()
-                                showAppleRevokeSheet = true
-                            }
-                        )
-                    } label: {
-                        Label("Delete account & all data", systemImage: "trash")
-                            .foregroundStyle(.red)
-                    }
-                    .accessibilityIdentifier("settings.deleteAccount")
-                } footer: {
-                    Text("Wipes every transaction, account, recommendation, your API key and profile from this device. Cannot be undone.")
-                }
-
-                Section("Privacy") {
-                    Link("Privacy & data policy",
-                         destination: URL(string: "https://example.com/budgetbot/privacy")!)
-                    Link("Where my data goes",
-                         destination: URL(string: "https://example.com/budgetbot/data-flow")!)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .navigationTitle("Settings")
-            .confirmationDialog("Remove the API key?", isPresented: $showRemoveConfirm) {
-                Button("Remove", role: .destructive) {
-                    KeychainService.shared.delete(.anthropicAPIKey)
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("You'll need to paste it again before the AI can extract anything.")
-            }
-            .sheet(isPresented: $showAppleRevokeSheet) {
-                AppleRevokeInstructionsSheet()
-            }
-        }
+    private var budgetSubtitle: String? {
+        guard let b = profiles.first?.monthlyBudget, b > 0 else { return "Not set" }
+        let cur = profiles.first?.baseCurrency ?? "EUR"
+        return CurrencyFormatter.string(for: b, currency: cur)
     }
 
-    private func validateAndSave() async {
-        saveError = nil
-        validating = true
-        defer { validating = false }
-        let trimmed = newKey.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-        let ok = await AIService.validate(key: trimmed)
-        guard ok else {
-            saveError = "Key didn't authenticate against api.anthropic.com. Double-check and try again."
-            return
+    private var aiModelLabel: String? {
+        let id = profiles.first?.aiModel ?? AIService.defaultModel
+        return Self.availableModels.first { $0.0 == id }?.1 ?? id
+    }
+
+    private var fxSubtitle: String? {
+        if fx.isRefreshing { return "Refreshing…" }
+        if let d = fx.fetchedAt {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .short
+            return "Updated " + formatter.localizedString(for: d, relativeTo: .now)
         }
-        try? KeychainService.shared.set(trimmed, for: .anthropicAPIKey)
-        newKey = ""
-        savedToast = "Key updated."
+        return "Tap to fetch"
     }
 
     private func deleteAccountAndData() {
-        // Wipe SwiftData
         for type: any PersistentModel.Type in [
             Split.self, Transaction.self, Attachment.self, AIRecommendation.self,
             Account.self, TxCategory.self, UserProfile.self, FXRateSnapshot.self,
@@ -255,22 +350,229 @@ struct SettingsView: View {
             try? context.delete(model: type)
         }
         try? context.save()
-
-        // Wipe Keychain
         KeychainService.shared.delete(.anthropicAPIKey)
         KeychainService.shared.delete(.appleUserID)
-
-        // Wipe pending captures from App Group
+        KeychainService.shared.delete(.googleUserID)
         PendingCaptureStore.clearAll()
-
-        // Sign out
         auth.signOut()
     }
 }
 
-/// Apple Sign-In requires server-side token revocation to fully unlink the
-/// account. We have no backend (see TODO.md), so we point the user at the
-/// system-level revoke screen.
+// MARK: - Avatar
+
+struct AvatarCircle: View {
+    let initials: String
+    var size: CGFloat = 56
+    let tint: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [tint, tint.opacity(0.55)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Text(initials)
+                .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+        }
+        .frame(width: size, height: size)
+        .shadow(color: tint.opacity(0.35), radius: size / 5, y: size / 12)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Sub-screens
+
+private struct CurrencyPickerSheet: View {
+    let title: String
+    let footer: String
+    @Binding var selection: String
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(Currencies.supported) { c in
+                    Button {
+                        selection = c.code
+                    } label: {
+                        HStack {
+                            Text(c.symbol)
+                                .font(.title3.bold())
+                                .frame(width: 36)
+                                .foregroundStyle(.tint)
+                            VStack(alignment: .leading) {
+                                Text(c.code).font(.body)
+                                Text(c.name).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if selection == c.code {
+                                Image(systemName: "checkmark")
+                                    .font(.callout.bold())
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                }
+            } footer: {
+                Text(footer)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct AIModelPickerSheet: View {
+    @Binding var selection: String
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(SettingsView.availableModels, id: \.0) { id, label in
+                    Button {
+                        selection = id
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(label).font(.body)
+                                Text(id)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if selection == id {
+                                Image(systemName: "checkmark")
+                                    .font(.callout.bold())
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            } footer: {
+                Text("Sonnet handles most receipts perfectly and is the cheapest. Opus is overkill for everyday use.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .navigationTitle("AI model")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct APIKeyManagerView: View {
+    @Binding var savedToast: String?
+    @Binding var showRemoveConfirm: Bool
+    @State private var newKey: String = ""
+    @State private var validating = false
+    @State private var saveError: String?
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    Image(systemName: KeychainService.shared.get(.anthropicAPIKey) == nil
+                          ? "xmark.circle.fill" : "checkmark.circle.fill")
+                        .foregroundStyle(KeychainService.shared.get(.anthropicAPIKey) == nil ? .red : .green)
+                    Text(KeychainService.shared.get(.anthropicAPIKey) == nil
+                         ? "Not configured" : "Stored in iOS Keychain")
+                    Spacer()
+                }
+            } footer: {
+                Text("Used only for requests to api.anthropic.com. We never see it.")
+            }
+
+            Section {
+                SecureField("sk-ant-…", text: $newKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.system(.body, design: .monospaced))
+                Button {
+                    Task { await validateAndSave() }
+                } label: {
+                    HStack {
+                        if validating { ProgressView() }
+                        Text(validating ? "Validating…" : "Validate & save key")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty || validating)
+                if let saveError {
+                    Text(saveError).font(.caption).foregroundStyle(.red)
+                }
+            } header: {
+                Text("Replace key")
+            }
+
+            Section {
+                Button("Remove key", role: .destructive) {
+                    showRemoveConfirm = true
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .navigationTitle("API key")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Remove the API key?", isPresented: $showRemoveConfirm) {
+            Button("Remove", role: .destructive) {
+                KeychainService.shared.delete(.anthropicAPIKey)
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func validateAndSave() async {
+        saveError = nil
+        validating = true
+        defer { validating = false }
+        let trimmed = newKey.trimmingCharacters(in: .whitespaces)
+        let ok = await AIService.validate(key: trimmed)
+        guard ok else {
+            saveError = "That key didn't authenticate. Double-check and try again."
+            return
+        }
+        try? KeychainService.shared.set(trimmed, for: .anthropicAPIKey)
+        newKey = ""
+        savedToast = "Key saved."
+    }
+}
+
+private struct BudgetEditor: View {
+    let profile: UserProfile?
+    @Environment(\.modelContext) private var context
+    @State private var text: String = ""
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("0.00", text: $text)
+                    .keyboardType(.decimalPad)
+                    .font(.title2.bold())
+                    .onAppear {
+                        text = profile?.monthlyBudget.map { "\($0)" } ?? ""
+                    }
+                    .onChange(of: text) { _, new in
+                        profile?.monthlyBudget = Decimal(string: new)
+                        try? context.save()
+                    }
+            } header: {
+                Text("Amount per month (\(profile?.baseCurrency ?? "EUR"))")
+            } footer: {
+                Text("Used for the budget burndown in Analytics and your Profile.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .navigationTitle("Monthly budget")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 private struct AppleRevokeInstructionsSheet: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {

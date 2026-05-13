@@ -8,81 +8,204 @@ struct SignInView: View {
     @Environment(\.colorScheme) private var scheme
 
     @State private var signingInGoogle = false
+    @State private var heroAppeared = false
+
+    private let features: [(symbol: String, title: String, body: String)] = [
+        ("camera.viewfinder", "Snap or scan anything",
+         "Receipts, PDFs, bank screenshots — the AI extracts every line."),
+        ("bolt.fill", "Categorised in seconds",
+         "Mixed receipts are split per category automatically."),
+        ("lock.shield.fill", "Your data, your key",
+         "Stays on your device + iCloud. No servers we own touch your transactions.")
+    ]
 
     var body: some View {
-        ZStack {
-            theme.current.background.view
-            VStack(spacing: 28) {
-                Spacer()
-                Image(systemName: "creditcard.viewfinder")
-                    .resizable().scaledToFit()
-                    .frame(width: 110, height: 110)
-                    .foregroundStyle(theme.current.tint)
-                    .shadow(color: theme.current.tint.opacity(0.4), radius: 20)
-                VStack(spacing: 8) {
-                    Text("BudgetBot")
-                        .font(theme.current.headingFont(.largeTitle))
-                    Text("Snap, scan or describe.\nThe AI does the bookkeeping.")
-                        .font(.body)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-
-                VStack(spacing: 12) {
-                    SignInWithAppleButton(.signIn) { request in
-                        request.requestedScopes = [.email, .fullName]
-                    } onCompletion: { result in
-                        auth.handle(result, context: context)
+        GeometryReader { geo in
+            ZStack {
+                theme.current.background.view
+                ScrollView {
+                    VStack(spacing: 24) {
+                        Spacer(minLength: max(40, geo.size.height * 0.04))
+                        brandHeader
+                        Spacer(minLength: 16)
+                        featureList
+                        Spacer(minLength: 16)
+                        signInButtons
+                        legalFooter
+                            .padding(.top, 4)
+                            .padding(.bottom, 8)
                     }
-                    .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
-                    .frame(height: 50)
+                    .frame(minHeight: geo.size.height)
+                    .padding(.horizontal, 24)
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.85, dampingFraction: 0.7)) {
+                heroAppeared = true
+            }
+        }
+    }
 
-                    Button {
-                        signingInGoogle = true
-                        Task {
-                            await auth.signInWithGoogle(context: context)
-                            signingInGoogle = false
-                        }
-                    } label: {
-                        HStack(spacing: 10) {
-                            if signingInGoogle {
-                                ProgressView().tint(.white)
-                            } else {
-                                Image(systemName: "g.circle.fill")
-                                    .font(.title2)
-                            }
-                            Text(signingInGoogle ? "Opening Google…" : "Continue with Google")
-                                .font(.callout.weight(.semibold))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .foregroundStyle(.white)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color(red: 0.20, green: 0.45, blue: 0.95))
+    // MARK: - Brand
+
+    private var brandHeader: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [theme.current.tint, theme.current.tint.opacity(0.55)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                    }
-                    .disabled(signingInGoogle)
-                }
-                .padding(.horizontal, 24)
+                    )
+                    .frame(width: 92, height: 92)
+                    .shadow(color: theme.current.tint.opacity(0.45), radius: 22, y: 10)
+                Image(systemName: "creditcard.viewfinder")
+                    .font(.system(size: 42, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .scaleEffect(heroAppeared ? 1.0 : 0.7)
+            .opacity(heroAppeared ? 1.0 : 0.0)
 
-                if let err = auth.lastError {
-                    Text(err)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                }
-
-                Text("Your data never leaves your device, except when sent to your chosen AI provider with your own key. Sync (if enabled) goes via your iCloud account, end-to-end encrypted by Apple.")
-                    .font(.footnote)
+            VStack(spacing: 6) {
+                Text("BudgetBot")
+                    .font(theme.current.headingFont(.largeTitle))
+                Text("Snap, scan, describe.\nThe AI does your bookkeeping.")
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 24)
             }
-            .padding()
+            .opacity(heroAppeared ? 1.0 : 0.0)
+            .offset(y: heroAppeared ? 0 : 12)
         }
+    }
+
+    // MARK: - Features
+
+    private var featureList: some View {
+        VStack(spacing: 14) {
+            ForEach(Array(features.enumerated()), id: \.offset) { idx, f in
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(theme.current.tint.opacity(0.15))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: f.symbol)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(theme.current.tint)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(f.title).font(.subheadline.weight(.semibold))
+                        Text(f.body).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .opacity(heroAppeared ? 1.0 : 0.0)
+                .offset(y: heroAppeared ? 0 : 14)
+                .animation(
+                    .spring(response: 0.7, dampingFraction: 0.8)
+                        .delay(0.1 + Double(idx) * 0.08),
+                    value: heroAppeared
+                )
+            }
+        }
+    }
+
+    // MARK: - Sign-in buttons (matched visual weight)
+
+    private var signInButtons: some View {
+        VStack(spacing: 12) {
+            SignInWithAppleButton(.signIn) { request in
+                request.requestedScopes = [.email, .fullName]
+            } onCompletion: { result in
+                auth.handle(result, context: context)
+            }
+            .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
+            .frame(height: 54)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            Button {
+                signingInGoogle = true
+                Task {
+                    await auth.signInWithGoogle(context: context)
+                    signingInGoogle = false
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    if signingInGoogle {
+                        ProgressView().tint(.primary)
+                    } else {
+                        GoogleGlyph()
+                    }
+                    Text(signingInGoogle ? "Opening Google…" : "Continue with Google")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 18)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(UIColor.systemBackground))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.pressable)
+            .disabled(signingInGoogle)
+            .accessibilityLabel("Continue with Google")
+
+            if let err = auth.lastError {
+                Label(err, systemImage: "exclamationmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.leading)
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    // MARK: - Legal
+
+    private var legalFooter: some View {
+        VStack(spacing: 6) {
+            Text("By continuing you agree to our terms and privacy policy.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 8)
+    }
+}
+
+// MARK: - Google "G" glyph
+// Google's brand asset isn't bundled — we render an approximation using the
+// four brand colours so the button still reads as "Google" without licensing.
+
+private struct GoogleGlyph: View {
+    var body: some View {
+        ZStack {
+            Image(systemName: "g.circle.fill")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.26, green: 0.52, blue: 0.96), // blue
+                            Color(red: 0.92, green: 0.26, blue: 0.21), // red
+                            Color(red: 0.98, green: 0.74, blue: 0.02), // yellow
+                            Color(red: 0.20, green: 0.66, blue: 0.33)  // green
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        }
+        .frame(width: 24, height: 24)
     }
 }
