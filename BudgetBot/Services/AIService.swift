@@ -117,6 +117,13 @@ struct AIService {
 
     // MARK: - Extraction
 
+    private static let categoryEnum: [String] = [
+        "Groceries", "Dining", "Coffee", "Transport", "Fuel", "Rent",
+        "Utilities", "Subscriptions", "Entertainment", "Shopping", "Health",
+        "Travel", "Other Expense", "Salary", "Freelance", "Refund", "Gift",
+        "Interest", "Other Income"
+    ]
+
     private static let extractToolSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -135,7 +142,7 @@ struct AIService {
                         ],
                         "currency": [
                             "type": "string",
-                            "description": "ISO 4217 currency code, e.g. USD, EUR, GBP."
+                            "description": "ISO 4217 currency code detected from the receipt (e.g. EUR, USD, GBP). Read the actual currency printed/shown on the receipt — only fall back to the user's default if truly unreadable."
                         ],
                         "payee": [
                             "type": "string",
@@ -143,20 +150,21 @@ struct AIService {
                         ],
                         "note": [
                             "type": "string",
-                            "description": "Optional short note explaining anything ambiguous."
+                            "description": "Optional short note explaining anything ambiguous, or which subset of a receipt this draft covers (e.g. 'meds-only subset of Tesco receipt')."
                         ],
                         "suggested_category": [
                             "type": "string",
-                            "enum": [
-                                "Groceries", "Dining", "Coffee", "Transport", "Fuel", "Rent",
-                                "Utilities", "Subscriptions", "Entertainment", "Shopping", "Health",
-                                "Travel", "Other Expense", "Salary", "Freelance", "Refund", "Gift",
-                                "Interest", "Other Income"
-                            ]
+                            "enum": categoryEnum,
+                            "description": "The category for THIS draft. When a single receipt spans multiple categories, emit ONE DRAFT PER CATEGORY (see system instructions)."
                         ],
                         "account_hint": [
                             "type": "string",
                             "description": "Exact `name` from the accounts list provided in the user message, if you can tell which account this transaction belongs to. Omit if unsure."
+                        ],
+                        "payment_method": [
+                            "type": "string",
+                            "enum": ["cash", "card", "unknown"],
+                            "description": "Did the receipt indicate cash or card? Look for 'CASH', 'PAID CASH', a card brand (Visa/Mastercard/Amex), a card-ending number, or 'change due' (cash). Use 'unknown' if there's no signal."
                         ],
                         "line_items": [
                             "type": "array",
@@ -164,7 +172,8 @@ struct AIService {
                                 "type": "object",
                                 "properties": [
                                     "description": ["type": "string"],
-                                    "amount":      ["type": "number"]
+                                    "amount":      ["type": "number"],
+                                    "category":    ["type": "string", "enum": categoryEnum]
                                 ],
                                 "required": ["description", "amount"]
                             ]
@@ -184,13 +193,27 @@ struct AIService {
     private static let extractSystem = """
     You are BudgetBot, a precise financial-data extractor. The user will send you receipts, \
     invoices, bank statements, screenshots, PDFs or freeform descriptions of money in / out. \
-    Pull out every distinct transaction you can see and report them via the `record_transactions` tool. \
-    Rules: amount is signed (negative = expense, positive = income); if currency is unclear fall back \
-    to the user's default; pick the closest enum category; if the user has provided a list of accounts \
-    and you can determine which account this transaction belongs to (e.g. by a card number ending, a \
-    statement header, or the source app), set `account_hint` to the exact account name; never invent \
-    a transaction you cannot see; set `confidence` low if anything is unclear. Do not produce any prose \
-    — only call the tool.
+    Report every distinct transaction via the `record_transactions` tool.
+
+    CATEGORISATION RULES — IMPORTANT:
+    - Categorise PER LINE ITEM, not per receipt. A grocery shop that includes paracetamol \
+    has TWO categories: 'Groceries' and 'Health'.
+    - When a single receipt spans multiple categories, emit ONE DRAFT PER CATEGORY. Sum the \
+    line items in each category for that draft's `amount`, and only include the items \
+    relevant to that draft in its `line_items`. Set `note` to "Split from <payee> receipt".
+    - When everything on the receipt is one category, emit a single draft and put every \
+    item in `line_items` with the same `category`.
+
+    OTHER RULES:
+    - `amount` is signed: negative = expense, positive = income.
+    - Read the printed currency from the receipt (€, $, £, currency code or country tax \
+    label). Only fall back to the user's default if truly unreadable.
+    - Set `payment_method` from receipt cues: 'cash' if you see CASH/PAID CASH/change due, \
+    'card' if you see a card brand or card-ending, 'unknown' otherwise.
+    - If accounts are provided and you can tell which one paid (e.g. card ending matches), \
+    set `account_hint` to that account's exact name.
+    - Never invent a transaction. Set `confidence` low if anything is unclear.
+    - Do not produce prose — only call the tool.
     """
 
     func extract(
@@ -698,8 +721,14 @@ struct AIService {
         let date = w.date.flatMap { df.date(from: $0) } ?? Date()
 
         let items = (w.line_items ?? []).map {
-            ExtractedDraft.LineItem(description: $0.description, amount: Decimal($0.amount))
+            ExtractedDraft.LineItem(
+                description: $0.description,
+                amount: Decimal($0.amount),
+                category: $0.category
+            )
         }
+        let payment = ExtractedDraft.PaymentMethod(rawValue: w.payment_method ?? "unknown") ?? .unknown
+
         return ExtractedDraft(
             date: date,
             amount: Decimal(w.amount),
@@ -708,6 +737,7 @@ struct AIService {
             note: w.note,
             suggestedCategory: w.suggested_category,
             accountHint: w.account_hint,
+            paymentMethod: payment,
             lineItems: items,
             confidence: w.confidence ?? 0.5
         )

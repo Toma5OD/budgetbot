@@ -11,13 +11,21 @@ struct ExtractedDraft: Identifiable, Codable, Hashable {
     var note: String?
     var suggestedCategory: String?  // free-form name; mapped to a Category by the reviewer
     var accountHint: String?        // free-form account name the AI thinks this belongs to
+    var paymentMethod: PaymentMethod = .unknown
     var lineItems: [LineItem]
     var confidence: Double          // 0..1
+
+    enum PaymentMethod: String, Codable, Hashable {
+        case cash
+        case card
+        case unknown
+    }
 
     struct LineItem: Codable, Hashable, Identifiable {
         var id = UUID()
         var description: String
         var amount: Decimal
+        var category: String? = nil
     }
 }
 
@@ -30,12 +38,14 @@ struct ExtractedDraftWire: Codable {
     let note: String?
     let suggested_category: String?
     let account_hint: String?
+    let payment_method: String?  // "cash" | "card" | "unknown"
     let line_items: [LineItemWire]?
     let confidence: Double?
 
     struct LineItemWire: Codable {
         let description: String
         let amount: Double
+        let category: String?
     }
 }
 

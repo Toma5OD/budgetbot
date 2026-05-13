@@ -58,11 +58,12 @@ final class BudgetBotUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
         app.tabBars.buttons["Accounts"].tap()
 
-        // Avoid asserting on the "Net Worth" Section header — iOS uppercases
-        // section headers in some styles/versions ("NET WORTH"), so match the
-        // row body text instead, which is case-stable across iOS releases.
-        XCTAssertTrue(app.staticTexts["Total in USD"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["Add account"].exists)
+        // Avoid asserting on "Total in USD" or "Net Worth" — both vary across
+        // locales and iOS section-header styles. The Add-account button is the
+        // canonical proof we landed on the right screen.
+        XCTAssertTrue(app.buttons["Add account"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Settings"].exists,
+                      "Gear in accounts toolbar should reach Settings")
     }
 
     func test_askTab_showsSuggestedQuestions() {

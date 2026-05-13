@@ -14,6 +14,13 @@ struct SettingsView: View {
     @State private var showRemoveConfirm = false
     @State private var showAppleRevokeSheet = false
 
+    private var initials: String {
+        let name = profiles.first?.displayName ?? profiles.first?.email ?? "?"
+        let parts = name.split(separator: " ").prefix(2)
+        let chars = parts.compactMap { $0.first }.map { String($0).uppercased() }
+        return chars.isEmpty ? String(name.prefix(1)).uppercased() : chars.joined()
+    }
+
     static let availableModels: [(String, String)] = [
         ("claude-sonnet-4-6",          "Sonnet 4.6 · balanced (default)"),
         ("claude-opus-4-7",            "Opus 4.7 · highest quality"),
@@ -24,31 +31,58 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Account") {
-                    LabeledContent("Name",  value: profiles.first?.displayName ?? "—")
-                    LabeledContent("Email", value: profiles.first?.email ?? "—")
+                    NavigationLink {
+                        ProfileView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle().fill(.tint).frame(width: 36, height: 36)
+                                Text(initials)
+                                    .font(.callout.bold())
+                                    .foregroundStyle(.white)
+                            }
+                            VStack(alignment: .leading) {
+                                Text(profiles.first?.displayName ?? "Profile")
+                                    .font(.body)
+                                if let email = profiles.first?.email {
+                                    Text(email).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("settings.profile")
+
                     Button("Sign out", role: .destructive) {
                         auth.signOut()
                     }
                 }
 
-                Section("Currency") {
-                    TextField("Default (used when adding tx)", text: Binding(
-                        get: { profiles.first?.defaultCurrency ?? "USD" },
+                Section {
+                    Picker("Default", selection: Binding(
+                        get: { profiles.first?.defaultCurrency ?? Currencies.localeDefault },
                         set: {
-                            if let p = profiles.first { p.defaultCurrency = $0.uppercased() }
+                            if let p = profiles.first { p.defaultCurrency = $0 }
                             try? context.save()
                         }
-                    ))
-                    .textInputAutocapitalization(.characters)
+                    )) {
+                        ForEach(Currencies.supported) { c in
+                            Text(c.displayLabel).tag(c.code)
+                        }
+                    }
+                    .accessibilityIdentifier("settings.defaultCurrency")
 
-                    TextField("Base (Net Worth & analytics)", text: Binding(
-                        get: { profiles.first?.baseCurrency ?? "USD" },
+                    Picker("Base (Net Worth & analytics)", selection: Binding(
+                        get: { profiles.first?.baseCurrency ?? Currencies.localeDefault },
                         set: {
-                            if let p = profiles.first { p.baseCurrency = $0.uppercased() }
+                            if let p = profiles.first { p.baseCurrency = $0 }
                             try? context.save()
                         }
-                    ))
-                    .textInputAutocapitalization(.characters)
+                    )) {
+                        ForEach(Currencies.supported) { c in
+                            Text(c.displayLabel).tag(c.code)
+                        }
+                    }
+                    .accessibilityIdentifier("settings.baseCurrency")
 
                     HStack {
                         Text("FX rates")
@@ -67,6 +101,10 @@ struct SettingsView: View {
                         }
                         .accessibilityLabel("Refresh FX rates from ECB")
                     }
+                } header: {
+                    Text("Currency")
+                } footer: {
+                    Text("Default is what new accounts use. Base is what Net Worth and analytics aggregate into. Receipt currencies are detected by the AI automatically.")
                 }
 
                 Section("Monthly budget") {

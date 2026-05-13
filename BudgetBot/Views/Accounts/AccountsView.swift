@@ -110,11 +110,12 @@ private struct AccountRow: View {
 struct AddAccountView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
 
     @State private var name = ""
     @State private var kind: AccountKind = .bank
     @State private var institution = ""
-    @State private var currency = "USD"
+    @State private var currency: String = Currencies.localeDefault
     @State private var openingBalanceText = "0"
 
     var body: some View {
@@ -128,8 +129,11 @@ struct AddAccountView: View {
                         }
                     }
                     TextField("Institution (optional)", text: $institution)
-                    TextField("Currency", text: $currency)
-                        .textInputAutocapitalization(.characters)
+                    Picker("Currency", selection: $currency) {
+                        ForEach(Currencies.supported) { c in
+                            Text(c.displayLabel).tag(c.code)
+                        }
+                    }
                 }
                 Section("Opening balance") {
                     TextField("0.00", text: $openingBalanceText)
@@ -138,6 +142,9 @@ struct AddAccountView: View {
             }
             .navigationTitle("New account")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                if let p = profiles.first { currency = p.defaultCurrency }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
@@ -156,7 +163,7 @@ struct AddAccountView: View {
             name: name.trimmingCharacters(in: .whitespaces),
             kind: kind,
             institution: institution.isEmpty ? nil : institution,
-            currency: currency.uppercased(),
+            currency: currency,
             openingBalance: opening
         )
         context.insert(acc)

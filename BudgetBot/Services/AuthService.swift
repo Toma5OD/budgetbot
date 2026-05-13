@@ -72,10 +72,13 @@ final class AuthService: NSObject {
                 }
             } else {
                 let nameStr = cred.fullName.map { PersonNameComponentsFormatter().string(from: $0) }
+                let localeCurrency = Currencies.localeDefault
                 let profile = UserProfile(
                     appleUserID: userID,
                     displayName: nameStr,
-                    email: cred.email
+                    email: cred.email,
+                    defaultCurrency: localeCurrency,
+                    baseCurrency: localeCurrency
                 )
                 context.insert(profile)
             }

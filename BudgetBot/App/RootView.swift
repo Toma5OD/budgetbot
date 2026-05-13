@@ -40,8 +40,8 @@ struct RootView: View {
             appleUserID: "ui-test",
             displayName: "UI Tester",
             email: "ui@test",
-            defaultCurrency: "USD",
-            baseCurrency: "USD"
+            defaultCurrency: Currencies.localeDefault,
+            baseCurrency: Currencies.localeDefault
         )
         context.insert(profile)
         try? context.save()

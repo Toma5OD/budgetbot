@@ -211,17 +211,36 @@ final class CaptureViewModel {
     }
 
     nonisolated static func matchAccount(for draft: ExtractedDraft, in accounts: [Account]) -> Account? {
-        guard let hint = draft.accountHint?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !hint.isEmpty else { return nil }
-        let hintLower = hint.lowercased()
-        // Exact (case-insensitive) match wins.
-        if let exact = accounts.first(where: { $0.name.lowercased() == hintLower }) {
-            return exact
+        // 1. AI's explicit account hint takes precedence.
+        if let hint = draft.accountHint?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !hint.isEmpty {
+            let hintLower = hint.lowercased()
+            if let exact = accounts.first(where: { $0.name.lowercased() == hintLower }) {
+                return exact
+            }
+            if let partial = accounts.first(where: {
+                let n = $0.name.lowercased()
+                return n.contains(hintLower) || hintLower.contains(n)
+            }) {
+                return partial
+            }
         }
-        // Partial match either direction.
-        return accounts.first(where: {
-            let n = $0.name.lowercased()
-            return n.contains(hintLower) || hintLower.contains(n)
-        })
+        // 2. Payment-method hint: cash → first cash-type account.
+        switch draft.paymentMethod {
+        case .cash:
+            if let cash = accounts.first(where: { $0.kind == .cash }) {
+                return cash
+            }
+        case .card:
+            // Prefer a credit/bank account that matches the currency.
+            if let card = accounts.first(where: {
+                ($0.kind == .credit || $0.kind == .bank) && $0.currency == draft.currency
+            }) {
+                return card
+            }
+        case .unknown:
+            break
+        }
+        return nil
     }
 }
