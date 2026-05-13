@@ -17,10 +17,13 @@ final class TxCategory {
     var createdAt: Date = Date.now
 
     @Relationship(deleteRule: .nullify, inverse: \Transaction.category)
-    var transactions: [Transaction] = []
+    var transactions: [Transaction]?
 
     @Relationship(deleteRule: .nullify, inverse: \Split.category)
-    var splits: [Split] = []
+    var splits: [Split]?
+
+    @Relationship(deleteRule: .nullify, inverse: \RecurringRule.category)
+    var recurringRules: [RecurringRule]?
 
     init(
         id: UUID = UUID(),

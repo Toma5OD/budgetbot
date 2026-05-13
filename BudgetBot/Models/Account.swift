@@ -42,8 +42,13 @@ final class Account {
     var archived: Bool = false
     var createdAt: Date = Date.now
 
+    // To-many relationships must be optional for CloudKit. `?? []` at every
+    // read site keeps the call-sites readable.
     @Relationship(deleteRule: .cascade, inverse: \Transaction.account)
-    var transactions: [Transaction] = []
+    var transactions: [Transaction]?
+
+    @Relationship(deleteRule: .nullify, inverse: \RecurringRule.account)
+    var recurringRules: [RecurringRule]?
 
     init(
         id: UUID = UUID(),
@@ -71,7 +76,7 @@ final class Account {
     }
 
     var balance: Decimal {
-        openingBalance + transactions
+        openingBalance + (transactions ?? [])
             .filter { $0.confirmed }
             .reduce(Decimal(0)) { $0 + $1.amount }
     }

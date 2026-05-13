@@ -203,7 +203,7 @@ struct AccountDetailView: View {
                 }
             }
             Section("Recent activity") {
-                let recent = account.transactions
+                let recent = (account.transactions ?? [])
                     .sorted { $0.date > $1.date }
                     .prefix(20)
                 if recent.isEmpty {

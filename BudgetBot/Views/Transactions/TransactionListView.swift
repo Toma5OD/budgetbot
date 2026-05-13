@@ -88,7 +88,7 @@ struct TransactionListView: View {
             let matchSearch: Bool = search.isEmpty
                 || tx.payee.localizedCaseInsensitiveContains(search)
                 || (tx.note?.localizedCaseInsensitiveContains(search) ?? false)
-                || tx.splits.contains { $0.itemDescription.localizedCaseInsensitiveContains(search) }
+                || tx.splitItems.contains { $0.itemDescription.localizedCaseInsensitiveContains(search) }
             return matchFilter && matchSearch && tx.confirmed
         }
     }
@@ -135,7 +135,7 @@ struct TransactionListView: View {
     private var allItems: [ItemRow] {
         var rows: [ItemRow] = []
         for tx in transactions where tx.confirmed {
-            if tx.splits.isEmpty {
+            if tx.splitItems.isEmpty {
                 rows.append(ItemRow(
                     id: tx.id,
                     description: tx.payee,
@@ -147,7 +147,7 @@ struct TransactionListView: View {
                     transaction: tx
                 ))
             } else {
-                for s in tx.splits {
+                for s in tx.splitItems {
                     rows.append(ItemRow(
                         id: s.id,
                         description: s.itemDescription,
@@ -201,8 +201,8 @@ struct TransactionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(tx.payee).font(.body)
                 HStack(spacing: 4) {
-                    if tx.splits.count > 1 {
-                        Text("\(tx.splits.count) items")
+                    if tx.splitItems.count > 1 {
+                        Text("\(tx.splitItems.count) items")
                     } else if let cat = tx.category {
                         Text(cat.name)
                     }
@@ -225,7 +225,7 @@ struct TransactionRow: View {
     }
 
     private var glyph: String {
-        if tx.splits.count > 1 { return "🧾" }
+        if tx.splitItems.count > 1 { return "🧾" }
         return tx.category?.emoji ?? "🧾"
     }
 }

@@ -55,6 +55,6 @@ final class AccountBalanceTests: XCTestCase {
         try ctx.save()
 
         XCTAssertEqual(a.balance, Decimal(string: "-32.5"))
-        XCTAssertEqual(tx.splits.count, 2)
+        XCTAssertEqual(tx.splitItems.count, 2)
     }
 }

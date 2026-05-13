@@ -149,7 +149,7 @@ struct AskView: View {
         var snaps: [TransactionQuery.Snapshot] = []
         for tx in transactions {
             let convert: (Decimal, String, String) -> Decimal = { fx.convert($0, from: $1, to: $2) }
-            if tx.splits.isEmpty {
+            if tx.splitItems.isEmpty {
                 snaps.append(.init(
                     date: tx.date,
                     payee: tx.payee,
@@ -161,7 +161,7 @@ struct AskView: View {
                     baseCurrency: base
                 ))
             } else {
-                for s in tx.splits {
+                for s in tx.splitItems {
                     snaps.append(.init(
                         date: s.date,
                         payee: s.payee,

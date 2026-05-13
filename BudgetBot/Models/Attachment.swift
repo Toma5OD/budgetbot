@@ -16,6 +16,10 @@ final class Attachment {
     var text: String?
     var createdAt: Date = Date.now
 
+    /// Inverse so CloudKit accepts Transaction.attachment as a relationship.
+    @Relationship(inverse: \Transaction.attachment)
+    var transaction: Transaction?
+
     init(
         id: UUID = UUID(),
         kind: AttachmentKind,

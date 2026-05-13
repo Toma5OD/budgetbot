@@ -19,7 +19,7 @@ final class Transaction {
 
     var paymentMethodRaw: String = PaymentMethod.unknown.rawValue
 
-    // FX snapshot — captured at commit time so historical Net Worth survives drift.
+    // FX snapshot — captured at commit time.
     var fxRateToBase: Decimal?
     var fxBaseCurrency: String?
 
@@ -28,8 +28,9 @@ final class Transaction {
     @Relationship var account: Account?
     @Relationship var category: TxCategory?
     @Relationship(deleteRule: .cascade) var attachment: Attachment?
+    /// Optional to satisfy CloudKit. Use the `.splits ?? []` pattern at reads.
     @Relationship(deleteRule: .cascade, inverse: \Split.transaction)
-    var splits: [Split] = []
+    var splits: [Split]?
 
     init(
         id: UUID = UUID(),
@@ -86,9 +87,15 @@ final class Transaction {
         set { paymentMethodRaw = newValue.rawValue }
     }
 
+    // MARK: - Derived
+
     var isExpense: Bool { amount < 0 }
     var absAmount: Decimal { amount < 0 ? -amount : amount }
-    var isSplit: Bool { !splits.isEmpty }
+
+    /// Non-optional accessor for code readability. Use this instead of
+    /// `splits ?? []`.
+    var splitItems: [Split] { splits ?? [] }
+    var isSplit: Bool { !splitItems.isEmpty }
 
     func amountInBase(_ base: String, liveConvert: (Decimal, String, String) -> Decimal) -> Decimal {
         if let rate = fxRateToBase,
@@ -106,26 +113,27 @@ final class Transaction {
     }
 
     func categorisedSlices(in base: String, liveConvert: (Decimal, String, String) -> Decimal) -> [CategorisedSlice] {
-        if splits.isEmpty {
+        let s = splitItems
+        if s.isEmpty {
             return [CategorisedSlice(
                 description: payee,
                 amount: amountInBase(base, liveConvert: liveConvert),
                 category: category
             )]
         }
-        return splits.map { s in
+        return s.map { split in
             let inBase: Decimal = {
                 if let rate = fxRateToBase,
                    let snapBase = fxBaseCurrency,
                    snapBase.uppercased() == base.uppercased() {
-                    return s.amount * rate
+                    return split.amount * rate
                 }
-                return liveConvert(s.amount, currency, base)
+                return liveConvert(split.amount, currency, base)
             }()
             return CategorisedSlice(
-                description: s.itemDescription,
+                description: split.itemDescription,
                 amount: inBase,
-                category: s.category
+                category: split.category
             )
         }
     }

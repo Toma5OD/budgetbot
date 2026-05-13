@@ -38,7 +38,7 @@ struct TransactionDetailView: View {
                         Label(m.displayName, systemImage: m.systemImage).tag(m)
                     }
                 }
-                if tx.splits.isEmpty {
+                if tx.splitItems.isEmpty {
                     Picker("Category", selection: $tx.category) {
                         Text("None").tag(TxCategory?.none)
                         ForEach(categories.filter { $0.kind == (tx.amount < 0 ? .expense : .income) }) { c in
@@ -52,9 +52,9 @@ struct TransactionDetailView: View {
                 ))
             }
 
-            if !tx.splits.isEmpty {
-                Section("Splits (\(tx.splits.count))") {
-                    ForEach(tx.splits.sorted { $0.createdAt < $1.createdAt }) { split in
+            if !tx.splitItems.isEmpty {
+                Section("Splits (\(tx.splitItems.count))") {
+                    ForEach(tx.splitItems.sorted { $0.createdAt < $1.createdAt }) { split in
                         @Bindable var bound = split
                         SplitEditor(split: bound, currency: tx.currency, categories: categories)
                     }
@@ -63,7 +63,7 @@ struct TransactionDetailView: View {
                         context.insert(s)
                     } label: { Label("Add split", systemImage: "plus.circle.fill") }
                     Button(role: .destructive) {
-                        for s in tx.splits { context.delete(s) }
+                        for s in tx.splitItems { context.delete(s) }
                     } label: { Label("Merge into single category", systemImage: "rectangle.compress.vertical") }
                 }
             } else {
