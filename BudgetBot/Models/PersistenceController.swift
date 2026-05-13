@@ -1,9 +1,7 @@
 import Foundation
 import SwiftData
 
-/// Single source of truth for the SwiftData stack. Versioned so we can add
-/// migrations without losing user data, and exposes an in-memory variant
-/// for tests + previews.
+/// Single source of truth for the SwiftData stack.
 enum SchemaV1: VersionedSchema {
     static var versionIdentifier = Schema.Version(1, 0, 0)
     static var models: [any PersistentModel.Type] = [
@@ -21,14 +19,32 @@ enum SchemaV1: VersionedSchema {
 
 enum BudgetBotMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] = [SchemaV1.self]
-    static var stages: [MigrationStage] = []   // grow as we add SchemaV2 etc.
+    static var stages: [MigrationStage] = []
 }
 
 enum PersistenceController {
     private static let storeFilename = "BudgetBotStore.store"
 
+    /// Where the SwiftData store actually lives. We pin it explicitly to the
+    /// app's own `Library/Application Support` rather than letting SwiftData
+    /// route into the App Group container (which it does by default once the
+    /// `com.apple.security.application-groups` entitlement is present).
+    ///
+    /// The App Group is for the Share Extension's pending-capture queue,
+    /// **not** for the main database — putting the DB there would expose every
+    /// transaction to any extension running in the group, and it's why the
+    /// store kept getting reused across schema rewrites during dev.
+    private static var storeURL: URL? {
+        let fm = FileManager.default
+        guard let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(storeFilename)
+    }
+
     /// Default on-disk store. If the store on disk doesn't match the current
-    /// schema (we're pre-1.0, models are still evolving), wipe it and retry
+    /// schema (we're pre-1.0, models are still evolving), wipe and retry
     /// rather than crashing the user. **Drop this fallback after launch** —
     /// at that point a schema change must come with a real `MigrationStage`.
     @MainActor
@@ -48,19 +64,46 @@ enum PersistenceController {
 
     /// Fresh in-memory container — use in tests & previews.
     static func makeInMemory() throws -> ModelContainer {
-        try buildContainer(inMemory: true, name: "BudgetBotMemory")
+        let schema = Schema(versionedSchema: SchemaV1.self)
+        let config = ModelConfiguration(
+            "BudgetBotMemory",
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            allowsSave: true
+        )
+        return try ModelContainer(for: schema, configurations: [config])
     }
 
     // MARK: - Internals
 
-    private static func buildContainer(inMemory: Bool, name: String = "BudgetBotStore") throws -> ModelContainer {
+    private static func buildContainer(inMemory: Bool) throws -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV1.self)
-        let config = ModelConfiguration(
-            name,
-            schema: schema,
-            isStoredInMemoryOnly: inMemory,
-            allowsSave: true
-        )
+        let config: ModelConfiguration
+        if inMemory {
+            config = ModelConfiguration(
+                "BudgetBotStore",
+                schema: schema,
+                isStoredInMemoryOnly: true,
+                allowsSave: true
+            )
+        } else if let url = storeURL {
+            // Pin the URL so SwiftData can't reroute into the App Group container.
+            config = ModelConfiguration(
+                "BudgetBotStore",
+                schema: schema,
+                url: url,
+                allowsSave: true
+            )
+        } else {
+            // Fallback to default behaviour if we somehow can't resolve
+            // Application Support. Shouldn't happen on iOS.
+            config = ModelConfiguration(
+                "BudgetBotStore",
+                schema: schema,
+                isStoredInMemoryOnly: false,
+                allowsSave: true
+            )
+        }
         return try ModelContainer(
             for: schema,
             migrationPlan: BudgetBotMigrationPlan.self,
@@ -68,15 +111,28 @@ enum PersistenceController {
         )
     }
 
-    /// Removes the on-disk SQLite store and its WAL/SHM siblings. Used by the
-    /// pre-1.0 schema-drift recovery in `live` and by UI-test reset.
+    /// Removes the on-disk SQLite store + WAL/SHM siblings from both the app's
+    /// own Application Support directory AND the App Group container (where
+    /// older builds accidentally wrote it). Used by the pre-1.0 schema-drift
+    /// recovery in `live` and by UI-test reset.
     static func wipeOnDiskStore() {
         let fm = FileManager.default
-        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        else { return }
-        for suffix in ["", "-shm", "-wal"] {
-            let url = appSupport.appendingPathComponent("\(storeFilename)\(suffix)")
-            try? fm.removeItem(at: url)
+        var dirsToClean: [URL] = []
+
+        if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            dirsToClean.append(appSupport)
+        }
+        // The App Group's Application Support — where pre-fix builds put the store.
+        if let appGroup = fm.containerURL(forSecurityApplicationGroupIdentifier: SharedConfig.appGroupID) {
+            let appGroupAppSupport = appGroup.appendingPathComponent("Library/Application Support")
+            dirsToClean.append(appGroupAppSupport)
+        }
+
+        for dir in dirsToClean {
+            for suffix in ["", "-shm", "-wal"] {
+                let url = dir.appendingPathComponent("\(storeFilename)\(suffix)")
+                try? fm.removeItem(at: url)
+            }
         }
     }
 }
