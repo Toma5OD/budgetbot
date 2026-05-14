@@ -270,8 +270,7 @@ struct AnalyticsView: View {
                 Chart(byDay) { d in
                     BarMark(
                         x: .value("Day", d.date, unit: .day),
-                        y: .value("Amount",
-                                  appearAnimation ? NSDecimalNumber(decimal: d.expense).doubleValue : 0)
+                        y: .value("Amount", NSDecimalNumber(decimal: d.expense).doubleValue)
                     )
                     .foregroundStyle(
                         LinearGradient(
@@ -283,7 +282,6 @@ struct AnalyticsView: View {
                     .cornerRadius(6)
                 }
                 .frame(height: 200)
-                .animation(.spring(response: 0.7, dampingFraction: 0.85), value: appearAnimation)
                 .chartOverlay { proxy in
                     GeometryReader { geo in
                         Rectangle().fill(.clear).contentShape(Rectangle())
@@ -484,8 +482,7 @@ struct AnalyticsView: View {
     private var donut: some View {
         Chart(byCategory) { c in
             SectorMark(
-                angle: .value("Amount",
-                              appearAnimation ? NSDecimalNumber(decimal: c.amount).doubleValue : 0),
+                angle: .value("Amount", NSDecimalNumber(decimal: c.amount).doubleValue),
                 innerRadius: .ratio(0.55),
                 outerRadius: c.id == selectedCategory?.id ? .ratio(1.05) : .ratio(0.95),
                 angularInset: 1.5
@@ -495,7 +492,6 @@ struct AnalyticsView: View {
             .opacity(selectedCategory == nil || selectedCategory?.id == c.id ? 1.0 : 0.32)
         }
         .chartAngleSelection(value: $selectedAngle)
-        .animation(.spring(response: 0.55, dampingFraction: 0.85), value: appearAnimation)
         .animation(.spring(response: 0.4, dampingFraction: 0.78), value: selectedCategory?.id)
         .chartBackground { _ in
             VStack(spacing: 4) {
@@ -789,7 +785,7 @@ struct AnalyticsView: View {
                         if w.alcohol > 0 {
                             LineMark(
                                 x: .value("Week", w.weekStart, unit: .weekOfYear),
-                                y: .value("EUR", appearAnimation ? NSDecimalNumber(decimal: w.alcohol).doubleValue : 0),
+                                y: .value("EUR", NSDecimalNumber(decimal: w.alcohol).doubleValue),
                                 series: .value("Series", "Alcohol")
                             )
                             .foregroundStyle(palette[5 % palette.count])
@@ -799,7 +795,7 @@ struct AnalyticsView: View {
                         if w.diningOut > 0 {
                             LineMark(
                                 x: .value("Week", w.weekStart, unit: .weekOfYear),
-                                y: .value("EUR", appearAnimation ? NSDecimalNumber(decimal: w.diningOut).doubleValue : 0),
+                                y: .value("EUR", NSDecimalNumber(decimal: w.diningOut).doubleValue),
                                 series: .value("Series", "Dining")
                             )
                             .foregroundStyle(palette[0 % palette.count])
@@ -809,7 +805,7 @@ struct AnalyticsView: View {
                         if w.lateNight > 0 {
                             LineMark(
                                 x: .value("Week", w.weekStart, unit: .weekOfYear),
-                                y: .value("EUR", appearAnimation ? NSDecimalNumber(decimal: w.lateNight).doubleValue : 0),
+                                y: .value("EUR", NSDecimalNumber(decimal: w.lateNight).doubleValue),
                                 series: .value("Series", "Late-night")
                             )
                             .foregroundStyle(theme.current.expenseColor)
@@ -819,7 +815,6 @@ struct AnalyticsView: View {
                     }
                 }
                 .frame(height: 160)
-                .animation(.spring(response: 0.8, dampingFraction: 0.85), value: appearAnimation)
             }
         }
         .padding(16)
@@ -896,8 +891,7 @@ struct AnalyticsView: View {
                 Chart(byDow) { d in
                     BarMark(
                         x: .value("Day", d.label),
-                        y: .value("Amount",
-                                  appearAnimation ? NSDecimalNumber(decimal: d.amount).doubleValue : 0)
+                        y: .value("Amount", NSDecimalNumber(decimal: d.amount).doubleValue)
                     )
                     .foregroundStyle(
                         LinearGradient(
@@ -909,7 +903,6 @@ struct AnalyticsView: View {
                     .cornerRadius(6)
                 }
                 .frame(height: 150)
-                .animation(.spring(response: 0.7, dampingFraction: 0.85), value: appearAnimation)
             }
         }
         .padding(16)

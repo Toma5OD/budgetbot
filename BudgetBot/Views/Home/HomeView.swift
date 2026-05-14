@@ -44,7 +44,7 @@ struct HomeView: View {
                     greeting
                     monthHero
                     quickActions
-                    if unratedForHindsight.count >= 10 { hindsightBanner }
+                    if unratedForHindsight.count >= 3 { hindsightBanner }
                     if !regrets.isEmpty { regretsBanner }
                     accountsStrip
                     if !rules.isEmpty { subscriptionsTeaser }
@@ -178,7 +178,7 @@ struct HomeView: View {
     // MARK: - Quick actions
 
     private var quickActions: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             quickActionButton(
                 title: "Capture",
                 subtitle: "Receipt or photo",
@@ -189,32 +189,60 @@ struct HomeView: View {
             }
             quickActionButton(
                 title: "Ask",
-                subtitle: "Anything about your money",
+                subtitle: "About your money",
                 icon: "sparkles",
                 tint: .purple
             ) {
                 selectedTab = 4   // Ask tab index
             }
+            NavigationLink(value: HomeRoute.hindsightReview) {
+                quickActionLabel(
+                    title: "Rate",
+                    subtitle: "Past purchases",
+                    icon: "star.leadinghalf.filled",
+                    tint: .orange
+                )
+            }
+            .buttonStyle(.pressable)
         }
         .padding(.horizontal, 16)
+    }
+
+    @ViewBuilder
+    private func quickActionLabel(title: String, subtitle: String,
+                                  icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.subheadline.bold())
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .themedCard()
     }
 
     @ViewBuilder
     private func quickActionButton(title: String, subtitle: String, icon: String,
                                     tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Image(systemName: icon)
-                    .font(.title2)
+                    .font(.title3)
                     .foregroundStyle(tint)
                 Text(title)
-                    .font(.headline)
+                    .font(.subheadline.bold())
                 Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
+            .padding(12)
             .themedCard()
         }
         .buttonStyle(.pressable)
