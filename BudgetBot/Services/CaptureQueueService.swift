@@ -238,6 +238,8 @@ final class CaptureQueueService {
                 confirmed: true,
                 aiExtracted: true,
                 paymentMethod: payment,
+                cardBrand: draft.cardBrand,
+                cardLast4: draft.cardLast4,
                 fxRateToBase: snapRate,
                 fxBaseCurrency: snapBase,
                 account: acc,

@@ -38,6 +38,34 @@ final class ExtractedDraftWireTests: XCTestCase {
         XCTAssertEqual(w.line_items?.first?.description, "Bread")
     }
 
+    func test_decodesCardBrandAndLast4() throws {
+        let json = """
+        {
+          "amount": -42.00,
+          "payee": "Tesco",
+          "payment_method": "card",
+          "card_brand": "Visa",
+          "card_last4": "4242",
+          "confidence": 0.95
+        }
+        """
+        let w = try JSONDecoder().decode(ExtractedDraftWire.self, from: Data(json.utf8))
+        XCTAssertEqual(w.payment_method, "card")
+        XCTAssertEqual(w.card_brand, "Visa")
+        XCTAssertEqual(w.card_last4, "4242")
+    }
+
+    func test_decodesWithMissingCardFields() throws {
+        // Model is allowed to omit card_brand / card_last4 when the receipt
+        // didn't show them. Decoder must not throw.
+        let json = """
+        { "amount": -3.0, "payee": "Bus", "payment_method": "cash", "confidence": 0.8 }
+        """
+        let w = try JSONDecoder().decode(ExtractedDraftWire.self, from: Data(json.utf8))
+        XCTAssertNil(w.card_brand)
+        XCTAssertNil(w.card_last4)
+    }
+
     func test_decodesRecommendationsEnvelope() throws {
         let json = """
         {

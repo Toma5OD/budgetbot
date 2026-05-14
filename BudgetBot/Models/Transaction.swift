@@ -18,6 +18,10 @@ final class Transaction {
     var createdAt: Date = Date.now
 
     var paymentMethodRaw: String = PaymentMethod.unknown.rawValue
+    /// "Visa", "Mastercard", "Amex", "Discover", "Other" when known.
+    var cardBrand: String?
+    /// Last 4 digits of the card used when the receipt revealed them.
+    var cardLast4: String?
 
     // FX snapshot — captured at commit time.
     var fxRateToBase: Decimal?
@@ -42,6 +46,8 @@ final class Transaction {
         confirmed: Bool = false,
         aiExtracted: Bool = false,
         paymentMethod: PaymentMethod = .unknown,
+        cardBrand: String? = nil,
+        cardLast4: String? = nil,
         fxRateToBase: Decimal? = nil,
         fxBaseCurrency: String? = nil,
         recurringRuleID: UUID? = nil,
@@ -59,6 +65,8 @@ final class Transaction {
         self.confirmed = confirmed
         self.aiExtracted = aiExtracted
         self.paymentMethodRaw = paymentMethod.rawValue
+        self.cardBrand = cardBrand
+        self.cardLast4 = cardLast4
         self.fxRateToBase = fxRateToBase
         self.fxBaseCurrency = fxBaseCurrency
         self.recurringRuleID = recurringRuleID
@@ -85,6 +93,24 @@ final class Transaction {
     var paymentMethod: PaymentMethod {
         get { PaymentMethod(rawValue: paymentMethodRaw) ?? .unknown }
         set { paymentMethodRaw = newValue.rawValue }
+    }
+
+    /// Human-readable payment label combining method + brand + last-4.
+    /// Examples: "Visa ••4242", "Mastercard", "Cash", "Card ••4242", "Card", "—".
+    var paymentDescription: String {
+        switch paymentMethod {
+        case .cash:
+            return "Cash"
+        case .unknown:
+            if let brand = cardBrand, let last4 = cardLast4 { return "\(brand) ••\(last4)" }
+            if let brand = cardBrand { return brand }
+            return "—"
+        case .card:
+            if let brand = cardBrand, let last4 = cardLast4 { return "\(brand) ••\(last4)" }
+            if let brand = cardBrand { return brand }
+            if let last4 = cardLast4 { return "Card ••\(last4)" }
+            return "Card"
+        }
     }
 
     // MARK: - Derived

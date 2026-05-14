@@ -190,6 +190,15 @@ struct AIService {
                             "enum": ["cash", "card", "unknown"],
                             "description": "Did the receipt indicate cash or card? Look for 'CASH', 'PAID CASH', a card brand (Visa/Mastercard/Amex), a card-ending number, or 'change due' (cash). Use 'unknown' if there's no signal."
                         ],
+                        "card_brand": [
+                            "type": "string",
+                            "enum": ["Visa", "Mastercard", "Amex", "Discover", "Other"],
+                            "description": "Set when the receipt prints the card brand (VISA, MASTERCARD, AMEX, AMERICAN EXPRESS, DISCOVER). Use 'Other' for unusual brands (UnionPay, JCB, etc). Omit if no brand is shown."
+                        ],
+                        "card_last4": [
+                            "type": "string",
+                            "description": "Exactly 4 digits — the last four of the card number. Receipts print this as 'XXXX 4242', '**** 4242', 'ending 4242', etc. Omit if not shown."
+                        ],
                         "line_items": [
                             "type": "array",
                             "items": [
@@ -253,6 +262,10 @@ struct AIService {
     label). Only fall back to the user's default if truly unreadable.
     - Set `payment_method` from receipt cues: 'cash' if you see CASH/PAID CASH/change due, \
     'card' if you see a card brand or card-ending, 'unknown' otherwise.
+    - When `payment_method` is 'card', also extract `card_brand` (Visa / Mastercard / Amex / \
+    Discover / Other) and `card_last4` (the 4 digits shown after asterisks) when the receipt \
+    prints them. Common patterns to look for: 'VISA xxxx 4242', '**** 4242', 'Mastercard \
+    ending 1234', 'AMEX ************1005'. Omit either field if it isn't shown.
     - If accounts are provided and you can tell which one paid (e.g. card ending matches), \
     set `account_hint` to that account's exact name.
     - `payee` is the merchant's name as you'd say it in conversation. Strip noise: "TESCO \
@@ -338,6 +351,95 @@ struct AIService {
         }
     }
 
+    // MARK: - Rescan / refine single draft with user hint
+
+    /// Re-runs extraction on the same receipt input, but tells the AI exactly
+    /// what was wrong with the previous attempt and what the user wants
+    /// corrected. Returns one refined draft (the same shape as the original).
+    func refineDraft(
+        _ draft: ExtractedDraft,
+        userHint: String,
+        inputs: [Input],
+        defaultCurrency: String
+    ) async throws -> ExtractedDraft {
+        guard !apiKey.isEmpty else { throw AIError.missingKey }
+
+        var contentBlocks: [[String: Any]] = []
+        for input in inputs {
+            switch input {
+            case .image(let img):
+                guard let jpeg = img.jpegData(compressionQuality: 0.8) else { continue }
+                contentBlocks.append([
+                    "type": "image",
+                    "source": [
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": jpeg.base64EncodedString()
+                    ]
+                ])
+            case .pdf(let data, _):
+                contentBlocks.append([
+                    "type": "document",
+                    "source": [
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": data.base64EncodedString()
+                    ]
+                ])
+            case .text(let txt):
+                contentBlocks.append(["type": "text", "text": txt])
+            }
+        }
+        let summaryJSON = (try? JSONEncoder().encode(Self.summary(of: draft)))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        contentBlocks.append([
+            "type": "text",
+            "text": """
+            Previous extraction attempt:
+            \(summaryJSON)
+
+            User's hint about what's wrong / what to look for:
+            "\(userHint)"
+
+            Re-extract this single transaction with the hint in mind. Use the same \
+            `record_transactions` tool format with EXACTLY ONE draft in the array.
+            """
+        ])
+
+        let body: [String: Any] = [
+            "model": model,
+            "max_tokens": 1024,
+            "system": [[
+                "type": "text",
+                "text": Self.extractSystem,
+                "cache_control": ["type": "ephemeral"]
+            ]],
+            "tools": [[
+                "name": "record_transactions",
+                "description": "Record one or more financial transactions extracted from the user's materials.",
+                "input_schema": Self.extractToolSchema,
+                "cache_control": ["type": "ephemeral"]
+            ]],
+            "tool_choice": ["type": "tool", "name": "record_transactions"],
+            "messages": [[
+                "role": "user",
+                "content": contentBlocks
+            ]]
+        ]
+
+        let raw = try await sendWithRetry(body: body, apiKey: apiKey, includePDFBeta: containsPDF(inputs))
+        let toolInput = try Self.toolUseInput(in: raw, expectedName: "record_transactions")
+        struct Envelope: Codable { let drafts: [ExtractedDraftWire] }
+        let env = try JSONDecoder().decode(Envelope.self, from: toolInput)
+        guard let wire = env.drafts.first else {
+            throw AIError.decoding("Refine returned no drafts")
+        }
+        var refined = mapDraft(wire, fallbackCurrency: defaultCurrency)
+        // Keep the user's id so the UI can swap in place.
+        refined.id = draft.id
+        return refined
+    }
+
     // MARK: - Critique pass
 
     private static let critiqueToolSchema: [String: Any] = [
@@ -356,7 +458,8 @@ struct AIService {
                             "type": "string",
                             "enum": ["amount", "payee", "currency", "date",
                                      "suggested_category", "new_category",
-                                     "payment_method", "note"],
+                                     "payment_method", "card_brand", "card_last4",
+                                     "note"],
                             "description": "Which field of the draft was wrong."
                         ],
                         "new_value": [
@@ -933,6 +1036,13 @@ struct AIService {
         }
         let payment = ExtractedDraft.PaymentMethod(rawValue: w.payment_method ?? "unknown") ?? .unknown
 
+        // Normalise card_last4: keep only digits, accept only exactly 4.
+        let last4: String? = {
+            guard let raw = w.card_last4 else { return nil }
+            let digits = raw.filter(\.isNumber)
+            return digits.count == 4 ? digits : nil
+        }()
+
         return ExtractedDraft(
             date: date,
             amount: Decimal(w.amount),
@@ -943,6 +1053,8 @@ struct AIService {
             newCategory: w.new_category,
             accountHint: w.account_hint,
             paymentMethod: payment,
+            cardBrand: w.card_brand,
+            cardLast4: last4,
             lineItems: items,
             confidence: w.confidence ?? 0.5
         )

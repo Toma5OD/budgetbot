@@ -38,6 +38,20 @@ struct TransactionDetailView: View {
                         Label(m.displayName, systemImage: m.systemImage).tag(m)
                     }
                 }
+                if tx.paymentMethod == .card {
+                    TextField("Card brand (Visa, Mastercard…)", text: Binding(
+                        get: { tx.cardBrand ?? "" },
+                        set: { tx.cardBrand = $0.isEmpty ? nil : $0 }
+                    ))
+                    TextField("Card last 4 digits", text: Binding(
+                        get: { tx.cardLast4 ?? "" },
+                        set: {
+                            let digits = $0.filter(\.isNumber).prefix(4)
+                            tx.cardLast4 = digits.count == 4 ? String(digits) : nil
+                        }
+                    ))
+                    .keyboardType(.numberPad)
+                }
                 if tx.splitItems.isEmpty {
                     Picker("Category", selection: $tx.category) {
                         Text("None").tag(TxCategory?.none)

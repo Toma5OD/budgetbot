@@ -18,6 +18,12 @@ struct ExtractedDraft: Identifiable, Codable, Hashable {
     var newCategory: String?
     var accountHint: String?
     var paymentMethod: PaymentMethod = .unknown
+    /// "Visa", "Mastercard", "Amex", "Discover", "Other" — when the receipt
+    /// or statement printed the card brand. Nil otherwise.
+    var cardBrand: String?
+    /// 4-digit string for the partial card number when the receipt shows it
+    /// ("**** 4242", "Card ending 4242", etc).
+    var cardLast4: String?
     var lineItems: [LineItem]
     var confidence: Double
 
@@ -46,6 +52,8 @@ struct ExtractedDraftWire: Codable {
     let new_category: String?
     let account_hint: String?
     let payment_method: String?  // "cash" | "card" | "unknown"
+    let card_brand: String?      // "Visa" | "Mastercard" | "Amex" | "Discover" | "Other"
+    let card_last4: String?      // 4-digit string
     let line_items: [LineItemWire]?
     let confidence: Double?
 

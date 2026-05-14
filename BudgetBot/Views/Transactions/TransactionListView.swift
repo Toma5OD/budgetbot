@@ -11,9 +11,10 @@ struct TransactionListView: View {
     @State private var mode: Mode = .transactions
     @State private var filter: Filter = .all
     @State private var search = ""
+    @State private var galleryGrouping: ReceiptsGalleryView.GroupBy = .date
 
     enum Mode: String, CaseIterable, Identifiable {
-        case transactions = "Transactions", items = "Items"
+        case transactions = "Transactions", items = "Items", receipts = "Receipts"
         var id: String { rawValue }
     }
 
@@ -32,16 +33,27 @@ struct TransactionListView: View {
                 .padding(.horizontal)
                 .padding(.top, 8)
 
-                Picker("", selection: $filter) {
-                    ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
+                if mode == .receipts {
+                    Picker("", selection: $galleryGrouping) {
+                        ForEach(ReceiptsGalleryView.GroupBy.allCases) {
+                            Text($0.rawValue).tag($0)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                } else {
+                    Picker("", selection: $filter) {
+                        ForEach(Filter.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
 
                 Group {
                     switch mode {
                     case .transactions: transactionsList
                     case .items:        itemsList
+                    case .receipts:     ReceiptsGalleryView(groupBy: $galleryGrouping)
                     }
                 }
                 .animation(.snappy, value: mode)
@@ -210,9 +222,14 @@ struct TransactionRow: View {
                     if let acc = tx.account {
                         Text("· \(acc.name)")
                     }
-                    Image(systemName: tx.paymentMethod.systemImage)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    if tx.paymentMethod != .unknown || tx.cardBrand != nil {
+                        Image(systemName: tx.paymentMethod.systemImage)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Text(tx.paymentDescription)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

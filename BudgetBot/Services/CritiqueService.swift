@@ -61,6 +61,11 @@ enum CritiqueApplier {
         case "payment_method":
             draft.paymentMethod = ExtractedDraft.PaymentMethod(rawValue: correction.newValue.lowercased())
                 ?? draft.paymentMethod
+        case "card_brand":
+            draft.cardBrand = correction.newValue.isEmpty ? nil : correction.newValue
+        case "card_last4":
+            let digits = correction.newValue.filter(\.isNumber)
+            draft.cardLast4 = digits.count == 4 ? digits : draft.cardLast4
         case "date":
             let df = DateFormatter()
             df.calendar = Calendar(identifier: .iso8601)

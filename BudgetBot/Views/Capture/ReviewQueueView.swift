@@ -25,6 +25,10 @@ struct ReviewQueueView: View {
     @State private var editingDraft: ExtractedDraft?
     @State private var selectedAccountID: UUID?
     @State private var commitError: String?
+    @State private var rescanHint: String = ""
+    @State private var showRescanSheet = false
+    @State private var isRescanning = false
+    @State private var rescanError: String?
 
     private var currentJob: CaptureJob? { jobs.first }
     private var currentDrafts: [ExtractedDraft] { currentJob?.drafts ?? [] }
@@ -43,9 +47,11 @@ struct ReviewQueueView: View {
                         draft: editingDraft ?? draft,
                         accounts: accounts,
                         selectedAccountID: $selectedAccountID,
+                        isRescanning: isRescanning,
                         onAccept: { acceptCurrent() },
                         onSkip:   { skipCurrent() },
                         onEdit:   { editingDraft = draft },
+                        onRescan: { showRescanSheet = true },
                         progress: jobProgress
                     )
                     .padding(.horizontal, 16)
@@ -92,6 +98,15 @@ struct ReviewQueueView: View {
                         accounts: accounts,
                         selectedAccountID: $selectedAccountID
                     )
+                }
+            }
+            .sheet(isPresented: $showRescanSheet) {
+                RescanSheet(
+                    hint: $rescanHint,
+                    isRunning: $isRescanning,
+                    error: $rescanError
+                ) {
+                    Task { await rescanCurrent() }
                 }
             }
         }
@@ -170,6 +185,63 @@ struct ReviewQueueView: View {
         editingDraft = nil
     }
 
+    /// Re-run extraction on this draft with the user's hint as extra context.
+    /// Replaces the current draft in place when the AI returns.
+    private func rescanCurrent() async {
+        guard let job = currentJob, draftIndex < currentDrafts.count else { return }
+        let originalDraft = currentDrafts[draftIndex]
+        let hint = rescanHint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !hint.isEmpty else { return }
+
+        isRescanning = true
+        rescanError = nil
+        defer { isRescanning = false }
+
+        guard let service = AIService.fromKeychain(model: job.aiModel) else {
+            rescanError = "No AI API key set."
+            return
+        }
+
+        // Reconstruct AIService.Input from the job's attachments.
+        var inputs: [AIService.Input] = []
+        for att in (job.inputs ?? []) {
+            switch att.kind {
+            case .image:
+                if let data = att.data, let img = UIImage(data: data) {
+                    inputs.append(.image(img))
+                }
+            case .pdf:
+                if let data = att.data {
+                    inputs.append(.pdf(data, filename: att.filename))
+                }
+            case .text:
+                if let t = att.text { inputs.append(.text(t)) }
+            }
+        }
+        if let note = job.textNote, !note.isEmpty { inputs.append(.text(note)) }
+
+        do {
+            let refined = try await service.refineDraft(
+                originalDraft,
+                userHint: hint,
+                inputs: inputs,
+                defaultCurrency: job.defaultCurrency
+            )
+            // Swap the draft in the job's persisted list.
+            var drafts = job.drafts
+            if draftIndex < drafts.count {
+                drafts[draftIndex] = refined
+                job.drafts = drafts
+                try? context.save()
+            }
+            editingDraft = nil
+            showRescanSheet = false
+            rescanHint = ""
+        } catch {
+            rescanError = error.localizedDescription
+        }
+    }
+
     private func commit(draft: ExtractedDraft, in job: CaptureJob) throws {
         // Pick the user's selected account; fall back to AI-matched then first
         // available. If the user has *no* accounts yet, auto-create a
@@ -218,6 +290,8 @@ struct ReviewQueueView: View {
             confirmed: true,
             aiExtracted: true,
             paymentMethod: payment,
+            cardBrand: draft.cardBrand,
+            cardLast4: draft.cardLast4,
             fxRateToBase: snapRate,
             fxBaseCurrency: snapBase,
             account: acc,
@@ -277,9 +351,11 @@ private struct DraftReviewCard: View {
     let draft: ExtractedDraft
     let accounts: [Account]
     @Binding var selectedAccountID: UUID?
+    let isRescanning: Bool
     let onAccept: () -> Void
     let onSkip:   () -> Void
     let onEdit:   () -> Void
+    let onRescan: () -> Void
     let progress: (Int, Int)
 
     @Environment(ThemeManager.self) private var theme
@@ -373,6 +449,7 @@ private struct DraftReviewCard: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+                .disabled(isRescanning)
 
                 Button(action: onEdit) {
                     Label("Edit", systemImage: "pencil")
@@ -381,6 +458,7 @@ private struct DraftReviewCard: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+                .disabled(isRescanning)
 
                 Button(action: onAccept) {
                     Label("Accept", systemImage: "checkmark")
@@ -389,7 +467,25 @@ private struct DraftReviewCard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .disabled(isRescanning)
             }
+
+            Button(action: onRescan) {
+                HStack(spacing: 6) {
+                    if isRescanning {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise.circle")
+                    }
+                    Text(isRescanning ? "Rescanning…" : "Rescan with a hint")
+                        .font(.callout)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
+            .disabled(isRescanning)
+            .accessibilityIdentifier("review.rescan")
         }
     }
 
@@ -452,6 +548,65 @@ private struct EditDraftSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Rescan sheet
+
+private struct RescanSheet: View {
+    @Binding var hint: String
+    @Binding var isRunning: Bool
+    @Binding var error: String?
+    let onRescan: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(
+                        "e.g. 'the total is the bottom-right figure, not the subtotal' or 'this is a refund, not a charge'",
+                        text: $hint,
+                        axis: .vertical
+                    )
+                    .lineLimit(3...8)
+                } header: {
+                    Text("What did the AI get wrong?")
+                } footer: {
+                    Text("BudgetBot will re-read the same receipt with this hint and propose a corrected version of this transaction.")
+                }
+
+                if let error {
+                    Section {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                            .font(.footnote)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .navigationTitle("Rescan")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isRunning)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        onRescan()
+                    } label: {
+                        if isRunning {
+                            ProgressView()
+                        } else {
+                            Text("Rescan").bold()
+                        }
+                    }
+                    .disabled(isRunning || hint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
