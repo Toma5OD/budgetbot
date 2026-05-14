@@ -13,6 +13,9 @@ struct HomeView: View {
 
     @Query(filter: #Predicate<Transaction> { $0.confirmed }, sort: \Transaction.date, order: .reverse)
     private var transactions: [Transaction]
+    @Query(filter: #Predicate<Transaction> { $0.confirmed && $0.isRegret },
+           sort: \Transaction.date, order: .reverse)
+    private var regrets: [Transaction]
     @Query(filter: #Predicate<Account> { !$0.archived }, sort: \Account.createdAt)
     private var accounts: [Account]
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
@@ -34,6 +37,7 @@ struct HomeView: View {
                     greeting
                     monthHero
                     quickActions
+                    if !regrets.isEmpty { regretsBanner }
                     accountsStrip
                     if !rules.isEmpty { subscriptionsTeaser }
                     recentActivity
@@ -49,6 +53,11 @@ struct HomeView: View {
             }
             .navigationDestination(for: Account.self) { a in
                 AccountDetailView(account: a)
+            }
+            .navigationDestination(for: HomeRoute.self) { route in
+                switch route {
+                case .hallOfShame: HallOfShameView()
+                }
             }
             .sheet(isPresented: $showAddAccount) {
                 AddAccountView()
@@ -202,6 +211,34 @@ struct HomeView: View {
         .buttonStyle(.pressable)
     }
 
+    // MARK: - Regrets banner
+
+    private var regretsBanner: some View {
+        let total = regrets.reduce(Decimal(0)) { acc, tx in
+            acc + (-tx.amountInBase(base) { fx.convert($0, from: $1, to: $2) })
+        }
+        return NavigationLink(value: HomeRoute.hallOfShame) {
+            HStack(spacing: 14) {
+                Text(regrets.first?.regretEmoji ?? "🤡")
+                    .font(.system(size: 36))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hall of Shame")
+                        .font(.subheadline.bold())
+                    Text("\(regrets.count) silly purchase\(regrets.count == 1 ? "" : "s") · \(CurrencyFormatter.string(for: total, currency: base))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .themedCard()
+            .padding(.horizontal, 16)
+        }
+        .buttonStyle(.pressable)
+    }
+
     // MARK: - Accounts strip
 
     private var accountsStrip: some View {
@@ -350,6 +387,12 @@ struct HomeView: View {
         .themedCard()
         .padding(.horizontal, 16)
     }
+}
+
+/// Typed nav destinations off the Home stack (anything that isn't a
+/// raw model). Add cases here when adding new pushable screens.
+enum HomeRoute: Hashable {
+    case hallOfShame
 }
 
 // MARK: - Account tile

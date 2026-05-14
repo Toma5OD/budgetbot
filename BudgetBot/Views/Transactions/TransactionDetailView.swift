@@ -102,6 +102,8 @@ struct TransactionDetailView: View {
                 }
             }
 
+            RegretSection(tx: tx)
+
             Section {
                 Toggle("Confirmed", isOn: $tx.confirmed)
             }
@@ -112,6 +114,62 @@ struct TransactionDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") { try? context.save() }
+            }
+        }
+    }
+}
+
+private struct RegretSection: View {
+    @Bindable var tx: Transaction
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $tx.isRegret) {
+                Label("Mark as silly purchase", systemImage: "trophy.fill")
+            }
+            if tx.isRegret {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Vibe").font(.caption.bold()).foregroundStyle(.secondary)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Transaction.regretEmojis, id: \.0) { emoji, label in
+                                Button {
+                                    tx.regretEmoji = tx.regretEmoji == emoji ? nil : emoji
+                                } label: {
+                                    VStack(spacing: 2) {
+                                        Text(emoji).font(.title2)
+                                        Text(label)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 10)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(tx.regretEmoji == emoji
+                                                  ? Color.accentColor.opacity(0.18)
+                                                  : Color.gray.opacity(0.08))
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    TextField("What were you thinking? (optional)", text: Binding(
+                        get: { tx.regretNote ?? "" },
+                        set: { tx.regretNote = $0.isEmpty ? nil : $0 }
+                    ), axis: .vertical)
+                    .lineLimit(1...3)
+                }
+                .padding(.vertical, 4)
+            }
+        } header: {
+            Text("Hall of Shame")
+        } footer: {
+            if tx.isRegret {
+                Text("This shows up in the Hall of Shame screen so you can roast yourself later.")
             }
         }
     }

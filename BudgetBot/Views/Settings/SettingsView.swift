@@ -14,6 +14,8 @@ struct SettingsView: View {
     @State private var showSignOutConfirm = false
     @State private var showRemoveKeyConfirm = false
     @State private var showAppleRevokeSheet = false
+    @State private var showLoadDemoConfirm = false
+    @State private var isLoadingDemo = false
     @State private var savedToast: String?
 
     static let availableModels: [(String, String)] = [
@@ -182,6 +184,21 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
 
+                section("For fun") {
+                    NavigationLink {
+                        HallOfShameView()
+                    } label: {
+                        SettingsRow("Hall of Shame",
+                                    subtitle: "Your stupidest purchases, ranked",
+                                    icon: "trophy.fill",
+                                    tint: .pink) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.hallOfShame")
+                }
+
                 section("Appearance") {
                     NavigationLink {
                         ThemePickerView()
@@ -221,6 +238,28 @@ struct SettingsView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                }
+
+                section("Developer (temp)") {
+                    Button {
+                        showLoadDemoConfirm = true
+                    } label: {
+                        SettingsRow("Load demo data",
+                                    subtitle: isLoadingDemo
+                                        ? "Wiping and reseeding…"
+                                        : "Wipes everything, then loads a fake user for testing",
+                                    icon: "sparkles.rectangle.stack.fill",
+                                    tint: .pink) {
+                            if isLoadingDemo {
+                                ProgressView()
+                            } else {
+                                chevronOnly
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoadingDemo)
+                    .accessibilityIdentifier("settings.loadDemoData")
                 }
 
                 section("Account") {
@@ -274,6 +313,16 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You can sign back in any time. Your data stays on this device.")
+        }
+        .confirmationDialog("Wipe everything and load demo data?",
+                            isPresented: $showLoadDemoConfirm,
+                            titleVisibility: .visible) {
+            Button("Wipe & load demo", role: .destructive) {
+                Task { await loadDemoData() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This deletes ALL of your existing accounts, transactions and categories, then inserts a fake demo user with ~3 months of synthetic activity. No way back.")
         }
         .sheet(isPresented: $showAppleRevokeSheet) {
             AppleRevokeInstructionsSheet()
@@ -373,6 +422,18 @@ struct SettingsView: View {
             return "Updated " + formatter.localizedString(for: d, relativeTo: .now)
         }
         return "Tap to fetch"
+    }
+
+    @MainActor
+    private func loadDemoData() async {
+        isLoadingDemo = true
+        defer { isLoadingDemo = false }
+        do {
+            try DemoDataSeeder.wipeAndSeed(in: context)
+            savedToast = "Demo data loaded."
+        } catch {
+            savedToast = "Failed to load demo data: \(error.localizedDescription)"
+        }
     }
 
     private func deleteAccountAndData() {

@@ -29,6 +29,16 @@ final class Transaction {
 
     var recurringRuleID: UUID?
 
+    /// User-flagged "Hall of Shame" purchase — drives the Regrets screen.
+    /// All three fields default so the SwiftData/CloudKit schema migrates
+    /// transparently for users on older builds.
+    var isRegret: Bool = false
+    /// One of `Transaction.regretEmojis` when set. Free-form but the UI only
+    /// surfaces a curated chip list.
+    var regretEmoji: String?
+    /// Optional one-liner from the user explaining why this stung.
+    var regretNote: String?
+
     @Relationship var account: Account?
     @Relationship var category: TxCategory?
     @Relationship(deleteRule: .cascade) var attachment: Attachment?
@@ -51,6 +61,9 @@ final class Transaction {
         fxRateToBase: Decimal? = nil,
         fxBaseCurrency: String? = nil,
         recurringRuleID: UUID? = nil,
+        isRegret: Bool = false,
+        regretEmoji: String? = nil,
+        regretNote: String? = nil,
         account: Account? = nil,
         category: TxCategory? = nil,
         attachment: Attachment? = nil,
@@ -70,6 +83,9 @@ final class Transaction {
         self.fxRateToBase = fxRateToBase
         self.fxBaseCurrency = fxBaseCurrency
         self.recurringRuleID = recurringRuleID
+        self.isRegret = isRegret
+        self.regretEmoji = regretEmoji
+        self.regretNote = regretNote
         self.account = account
         self.category = category
         self.attachment = attachment
@@ -112,6 +128,20 @@ final class Transaction {
             return "Card"
         }
     }
+
+    /// Curated emoji chips used by the Hall of Shame picker. Keep first;
+    /// users see them in this order. Anything outside the list is allowed in
+    /// data but won't be offered in the picker.
+    static let regretEmojis: [(String, String)] = [
+        ("🤡", "Clown moment"),
+        ("🍻", "Drunk buy"),
+        ("🛍️", "Retail therapy"),
+        ("🍕", "Late-night order"),
+        ("💸", "Money pit"),
+        ("🥲", "Should've known"),
+        ("🎰", "Lost a bet"),
+        ("🚕", "Could've walked")
+    ]
 
     // MARK: - Derived
 
