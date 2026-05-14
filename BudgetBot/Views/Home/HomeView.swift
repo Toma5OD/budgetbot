@@ -23,6 +23,7 @@ struct HomeView: View {
         sort: \Transaction.date, order: .reverse
     )
     private var unratedForHindsight: [Transaction]
+    @Query(sort: \SavingsGoal.createdAt, order: .reverse) private var goals: [SavingsGoal]
     @Query(filter: #Predicate<Account> { !$0.archived }, sort: \Account.createdAt)
     private var accounts: [Account]
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
@@ -44,6 +45,7 @@ struct HomeView: View {
                     greeting
                     monthHero
                     quickActions
+                    if !goals.isEmpty { goalsStrip }
                     if unratedForHindsight.count >= 3 { hindsightBanner }
                     if !regrets.isEmpty { regretsBanner }
                     accountsStrip
@@ -66,7 +68,11 @@ struct HomeView: View {
                 switch route {
                 case .hallOfShame:      HallOfShameView()
                 case .hindsightReview:  HindsightReviewView()
+                case .savingsGoals:     SavingsGoalsView()
                 }
+            }
+            .navigationDestination(for: SavingsGoal.self) { goal in
+                GoalDetailView(goal: goal)
             }
             .sheet(isPresented: $showAddAccount) {
                 AddAccountView()
@@ -246,6 +252,40 @@ struct HomeView: View {
             .themedCard()
         }
         .buttonStyle(.pressable)
+    }
+
+    // MARK: - Goals strip
+
+    private var goalsStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                NavigationLink(value: HomeRoute.savingsGoals) {
+                    HStack(spacing: 4) {
+                        Text("Goals").font(.subheadline.bold())
+                        Image(systemName: "chevron.right")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Text("\(goals.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 20)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(goals.prefix(6)) { goal in
+                        NavigationLink(value: goal) {
+                            GoalTile(goal: goal, theme: theme.current)
+                        }
+                        .buttonStyle(.pressable)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
     }
 
     // MARK: - Hindsight banner
@@ -464,6 +504,50 @@ struct HomeView: View {
 enum HomeRoute: Hashable {
     case hallOfShame
     case hindsightReview
+    case savingsGoals
+}
+
+// MARK: - Goal tile
+
+private struct GoalTile: View {
+    let goal: SavingsGoal
+    let theme: Theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(goal.emoji).font(.title2)
+                Spacer()
+                Text("\(Int((goal.progress * 100).rounded()))%")
+                    .font(.caption.bold().monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Text(goal.name)
+                .font(.subheadline.bold())
+                .lineLimit(1)
+            // Inline progress bar.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.gray.opacity(0.15)).frame(height: 6)
+                    Capsule()
+                        .fill(LinearGradient(
+                            colors: [theme.tint, theme.tint.opacity(0.55)],
+                            startPoint: .leading, endPoint: .trailing))
+                        .frame(width: geo.size.width * goal.progress, height: 6)
+                }
+            }
+            .frame(height: 6)
+            Text(CurrencyFormatter.string(for: goal.currentAmount, currency: goal.currency))
+                .font(.caption.bold().monospacedDigit())
+                .foregroundStyle(.primary)
+            Text("of \(CurrencyFormatter.string(for: goal.targetAmount, currency: goal.currency))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(width: 170, height: 140, alignment: .topLeading)
+        .themedCard()
+    }
 }
 
 // MARK: - Account tile

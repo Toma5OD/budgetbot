@@ -471,6 +471,85 @@ enum AnalyticsMetrics {
         )
     }
 
+    // MARK: - Anomaly detection
+
+    struct Anomaly: Identifiable, Equatable {
+        let id = UUID()
+        let transaction: Transaction
+        /// Median absolute spend at this merchant across the comparison
+        /// window. Provides context for the user — "you usually spend €X
+        /// here, this was €Y."
+        let typical: Decimal
+        /// Multiple of typical that this transaction represents.
+        let factor: Double
+
+        static func == (lhs: Anomaly, rhs: Anomaly) -> Bool {
+            lhs.transaction.id == rhs.transaction.id
+        }
+    }
+
+    /// Flags transactions whose absolute amount is unusually high for the
+    /// merchant. Heuristic: per-merchant median over the prior `window`
+    /// days; flag anything in the most recent `recent` days where the
+    /// amount is ≥ `factor` × median, requiring at least `minPriors`
+    /// prior transactions so a single big buy can't define its own
+    /// baseline.
+    ///
+    /// Returned anomalies are sorted by the headline-grabbing factor
+    /// (biggest deviation first). Pure — no FX, no SwiftData calls
+    /// inside the math.
+    static func anomalies(
+        in txs: [Transaction],
+        base: String,
+        convert: Converter,
+        window: Int = 90,
+        recent: Int = 14,
+        factor: Double = 2.0,
+        minPriors: Int = 3,
+        now: Date = .now,
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) -> [Anomaly] {
+        let recentCutoff = calendar.date(byAdding: .day, value: -recent, to: now) ?? now
+        let windowCutoff = calendar.date(byAdding: .day, value: -window, to: now) ?? now
+
+        // Group expense tx by payee inside the broader window.
+        let expenses = txs.filter { $0.amount < 0 && $0.date >= windowCutoff }
+        let grouped  = Dictionary(grouping: expenses) { $0.payee }
+
+        var found: [Anomaly] = []
+        for (_, items) in grouped {
+            // Recent candidates: the spike we might flag.
+            let recents = items.filter { $0.date >= recentCutoff }
+            // Priors: everything strictly before the recent window.
+            let priors  = items.filter { $0.date <  recentCutoff }
+            guard priors.count >= minPriors else { continue }
+
+            let priorAmounts: [Decimal] = priors.map { -$0.amountInBase(base, liveConvert: convert) }
+            let med = median(priorAmounts)
+            guard med > 0 else { continue }
+
+            for tx in recents {
+                let amt = -tx.amountInBase(base, liveConvert: convert)
+                let f = NSDecimalNumber(decimal: amt).doubleValue
+                      / NSDecimalNumber(decimal: med).doubleValue
+                if f >= factor {
+                    found.append(Anomaly(transaction: tx, typical: med, factor: f))
+                }
+            }
+        }
+        return found.sorted { $0.factor > $1.factor }
+    }
+
+    private static func median(_ values: [Decimal]) -> Decimal {
+        guard !values.isEmpty else { return 0 }
+        let sorted = values.sorted()
+        let n = sorted.count
+        if n.isMultiple(of: 2) {
+            return (sorted[n/2 - 1] + sorted[n/2]) / 2
+        }
+        return sorted[n/2]
+    }
+
     // MARK: - Helpers
 
     private static func daysBetween(_ a: Date, and b: Date, in cal: Calendar) -> Int {

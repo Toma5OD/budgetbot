@@ -14,7 +14,9 @@ enum SchemaV1: VersionedSchema {
         AIRecommendation.self,
         FXRateSnapshot.self,
         RecurringRule.self,
-        CaptureJob.self
+        CaptureJob.self,
+        SavingsGoal.self,
+        GoalContribution.self
     ]
 }
 

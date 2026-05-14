@@ -192,6 +192,21 @@ struct SettingsView: View {
 
                 section("For fun") {
                     NavigationLink {
+                        SavingsGoalsView()
+                    } label: {
+                        SettingsRow("Savings goals",
+                                    subtitle: "Set a target, log contributions, watch the ring fill.",
+                                    icon: "target",
+                                    tint: .green) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.savingsGoals")
+
+                    RowDivider()
+
+                    NavigationLink {
                         HallOfShameView()
                     } label: {
                         SettingsRow("Hall of Shame",

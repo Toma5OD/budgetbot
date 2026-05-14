@@ -73,6 +73,7 @@ struct AnalyticsView: View {
                         budgetCard(budget: budget)
                     }
                     needVsWantSection
+                    anomaliesSection
                     flowChart
                     if regretSummary.count > 0 { dickheadSection }
                     categoryBreakdown
@@ -211,6 +212,69 @@ struct AnalyticsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .themedCard()
+    }
+
+    // MARK: - Anomalies
+
+    /// "Heads up" — transactions in the last 14 days where the
+    /// per-merchant amount was unusually high vs the user's typical
+    /// spend at that merchant. Only renders when there's something to
+    /// flag, so most of the time the card is silent.
+    @ViewBuilder
+    private var anomaliesSection: some View {
+        let anomalies = AnalyticsMetrics.anomalies(
+            in: transactions, base: base, convert: convert)
+        if !anomalies.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Heads up", systemImage: "exclamationmark.triangle.fill")
+                        .font(.headline)
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Text("\(anomalies.count) unusual")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(.orange.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.orange)
+                }
+                VStack(spacing: 0) {
+                    let top = anomalies.prefix(5)
+                    ForEach(Array(top)) { a in
+                        NavigationLink(value: a.transaction) {
+                            anomalyRow(a)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.plain)
+                        if a.transaction.id != top.last?.transaction.id { Divider() }
+                    }
+                }
+            }
+            .padding(16)
+            .themedCard()
+        }
+    }
+
+    private func anomalyRow(_ a: AnalyticsMetrics.Anomaly) -> some View {
+        let tx = a.transaction
+        return HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(.orange.opacity(0.18))
+                Text("\(Int(a.factor.rounded()))×")
+                    .font(.caption.bold().monospacedDigit())
+                    .foregroundStyle(.orange)
+            }
+            .frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tx.payee).font(.callout.bold()).lineLimit(1)
+                Text("Usually \(CurrencyFormatter.string(for: a.typical, currency: base)) · \(tx.date.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(CurrencyFormatter.string(for: tx.amount, currency: tx.currency))
+                .font(.callout.bold().monospacedDigit())
+                .foregroundStyle(theme.current.expenseColor)
+        }
     }
 
     // MARK: - Need vs Want
