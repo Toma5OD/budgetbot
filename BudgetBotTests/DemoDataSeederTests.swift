@@ -20,17 +20,32 @@ final class DemoDataSeederTests: XCTestCase {
         XCTAssertEqual(profiles.first?.displayName, "Sam Sample")
 
         let accounts = try ctx.fetch(FetchDescriptor<Account>())
-        XCTAssertEqual(accounts.count, 3, "Three demo accounts: bank, cash, credit")
+        XCTAssertEqual(accounts.count, 4,
+                       "Four demo accounts: two banks (Revolut + AIB), cash, credit")
+        let kinds = Set(accounts.map(\.kind))
+        XCTAssertTrue(kinds.contains(.bank),   "Seeder includes at least one bank account")
+        XCTAssertTrue(kinds.contains(.cash),   "Seeder includes a cash account")
+        XCTAssertTrue(kinds.contains(.credit), "Seeder includes a credit account for FX testing")
 
         let categories = try ctx.fetch(FetchDescriptor<TxCategory>())
         XCTAssertEqual(categories.count, TxCategory.defaults.count,
                        "All default categories are seeded")
 
         let txs = try ctx.fetch(FetchDescriptor<Transaction>())
-        XCTAssertGreaterThan(txs.count, 40,
-                             "Seeder should populate enough history to make analytics meaningful")
+        XCTAssertGreaterThan(txs.count, 100,
+                             "Seeder should populate enough history (5+ months) to make analytics meaningful")
         XCTAssertTrue(txs.allSatisfy(\.confirmed),
                       "Demo transactions are pre-confirmed so they show up immediately")
+
+        let currencies = Set(txs.map(\.currency))
+        XCTAssertTrue(currencies.contains("EUR"))
+        XCTAssertTrue(currencies.contains("USD"),
+                      "Demo includes USD travel transactions for FX-aware screens")
+
+        XCTAssertTrue(txs.contains { $0.amount > 0 },
+                      "Demo includes income (salary, refunds) not just expenses")
+        XCTAssertTrue(txs.contains { $0.fxRateToBase != nil },
+                      "At least one transaction has an FX rate snapshot")
     }
 
     func test_seedingIncludesRegretsForHallOfShame() throws {
@@ -55,7 +70,8 @@ final class DemoDataSeederTests: XCTestCase {
         try DemoDataSeeder.wipeAndSeed(in: ctx)
 
         let splits = try ctx.fetch(FetchDescriptor<Split>())
-        XCTAssertFalse(splits.isEmpty, "Demo data exercises the split path")
+        XCTAssertGreaterThanOrEqual(splits.count, 2,
+                                    "Demo data exercises the split path more than once")
     }
 
     func test_seedingIsRepeatable_wipesOldDataFirst() throws {
