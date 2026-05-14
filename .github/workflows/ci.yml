@@ -74,7 +74,7 @@ jobs:
           xcrun simctl boot "$DEVICE_ID" || true
           xcrun simctl bootstatus "$DEVICE_ID" -b
 
-      - name: Build & test
+      - name: Build & test (unit only — UI tests run locally to save macOS minutes)
         run: |
           set -o pipefail
           xcodebuild test \
@@ -82,6 +82,7 @@ jobs:
             -scheme BudgetBot \
             -sdk iphonesimulator \
             -destination "id=$DEVICE_ID" \
+            -only-testing:BudgetBotTests \
             -resultBundlePath TestResults.xcresult \
             -enableCodeCoverage YES \
             CODE_SIGNING_ALLOWED=NO \

@@ -24,6 +24,7 @@ struct ReviewQueueView: View {
     @State private var draftIndex = 0
     @State private var editingDraft: ExtractedDraft?
     @State private var selectedAccountID: UUID?
+    @State private var commitError: String?
 
     private var currentJob: CaptureJob? { jobs.first }
     private var currentDrafts: [ExtractedDraft] { currentJob?.drafts ?? [] }
@@ -72,6 +73,14 @@ struct ReviewQueueView: View {
                 }
             }
             .onAppear { hydrate() }
+            .alert("Couldn't save", isPresented: Binding(
+                get: { commitError != nil },
+                set: { if !$0 { commitError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(commitError ?? "")
+            }
             .sheet(item: $editingDraft) { _ in
                 if let editing = editingDraft {
                     EditDraftSheet(
@@ -129,8 +138,13 @@ struct ReviewQueueView: View {
 
     private func acceptCurrent() {
         guard let job = currentJob, let draft = (editingDraft ?? currentDraft) else { return }
-        commit(draft: draft, in: job)
-        advance(job: job)
+        do {
+            try commit(draft: draft, in: job)
+            advance(job: job)
+        } catch {
+            // Keep the user on the current draft so they can try again.
+            commitError = "Couldn't save: \(error.localizedDescription)"
+        }
     }
 
     private func skipCurrent() {
@@ -156,11 +170,16 @@ struct ReviewQueueView: View {
         editingDraft = nil
     }
 
-    private func commit(draft: ExtractedDraft, in job: CaptureJob) {
-        let preferredAccount = accounts.first { $0.id == selectedAccountID }
+    private func commit(draft: ExtractedDraft, in job: CaptureJob) throws {
+        // Pick the user's selected account; fall back to AI-matched then first
+        // available. If the user has *no* accounts yet, auto-create a
+        // sensible "Wallet" cash account so the transaction has somewhere to
+        // land. (Transaction.account is optional, but a nil-account row never
+        // shows up under any Account, which surprises the user.)
+        let acc = accounts.first { $0.id == selectedAccountID }
             ?? CaptureViewModel.matchAccount(for: draft, in: accounts)
             ?? accounts.first
-        guard let acc = preferredAccount else { return }
+            ?? autoCreateDefaultAccount(profileCurrency: job.defaultCurrency)
 
         let cat = CaptureViewModel.matchCategory(for: draft, in: categories)
         let (snapRate, snapBase) = CaptureViewModel.snapshotFX(
@@ -170,7 +189,6 @@ struct ReviewQueueView: View {
         )
         let payment = Transaction.PaymentMethod(rawValue: draft.paymentMethod.rawValue) ?? .unknown
 
-        // Reassign the job's first attachment to the first Transaction we create.
         let attachmentToUse: Attachment? = {
             if draftIndex == 0 { return (job.inputs ?? []).first }
             return nil
@@ -218,7 +236,20 @@ struct ReviewQueueView: View {
             tx.category = nil
         }
 
-        try? context.save()
+        try context.save()
+    }
+
+    /// Last-resort: the user accepted a transaction but has no accounts at
+    /// all yet. Spin up a "Wallet" cash account so they don't lose the row.
+    private func autoCreateDefaultAccount(profileCurrency: String) -> Account {
+        let acc = Account(
+            name: "Wallet",
+            kind: .cash,
+            currency: profileCurrency,
+            openingBalance: 0
+        )
+        context.insert(acc)
+        return acc
     }
 }
 

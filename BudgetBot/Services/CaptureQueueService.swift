@@ -169,14 +169,28 @@ final class CaptureQueueService {
     private func commitDrafts(job: CaptureJob, drafts: [ExtractedDraft], accounts: [Account]) {
         let ctx = container.mainContext
         let categories = (try? ctx.fetch(FetchDescriptor<TxCategory>())) ?? []
-        let defaultAccount = accounts.first { $0.id == job.defaultAccountID } ?? accounts.first
+        var resolvedAccounts = accounts
+        var defaultAccount = resolvedAccounts.first { $0.id == job.defaultAccountID } ?? resolvedAccounts.first
+
+        // YOLO with no accounts yet: spin up a Wallet so the row lands.
+        if defaultAccount == nil {
+            let wallet = Account(
+                name: "Wallet",
+                kind: .cash,
+                currency: job.defaultCurrency,
+                openingBalance: 0
+            )
+            ctx.insert(wallet)
+            resolvedAccounts.append(wallet)
+            defaultAccount = wallet
+        }
 
         let fxRates = fx?.rates ?? [:]
         let firstInput = (job.inputs ?? []).first
 
         for (idx, draft) in drafts.enumerated() {
             let cat = CaptureViewModel.matchCategory(for: draft, in: categories)
-            let acc = CaptureViewModel.matchAccount(for: draft, in: accounts) ?? defaultAccount
+            let acc = CaptureViewModel.matchAccount(for: draft, in: resolvedAccounts) ?? defaultAccount
 
             // FX snapshot
             let (snapRate, snapBase) = CaptureViewModel.snapshotFX(

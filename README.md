@@ -100,10 +100,12 @@ Override the simulator name if `iPhone 17` isn't on your machine:
 make test SIM='iPhone 16 Pro'
 ```
 
-CI runs the same `xcodebuild test` on every push and PR to `main`
-via GitHub Actions (`.github/workflows/ci.yml`). Test results are
-uploaded as an `xcresult` artifact on every run; the xcodebuild log
-is uploaded on failure.
+CI runs **unit tests only** on every push and PR to `main` via GitHub
+Actions (`.github/workflows/ci.yml`). UI tests are excluded from CI
+to stay under GitHub's free macOS-minute budget (every macOS minute
+is billed 10× a Linux minute, and UI tests double the run length).
+Run them locally with `make test-ui` before opening a PR. Test
+results are uploaded as an `xcresult` artifact on every run.
 
 88 unit tests + 6 UI tests. All green.
 
