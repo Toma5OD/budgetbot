@@ -4,12 +4,15 @@ import SwiftData
 struct RootView: View {
     @Environment(AuthService.self) private var auth
     @Environment(\.modelContext) private var context
+    @State private var welcomeDone = WelcomeFlow.hasCompletedWelcome
 
     var body: some View {
         Group {
             if UITestSupport.isUITestMode {
                 MainTabView()
                     .task { seedDefaultCategoriesIfNeeded(); seedUITestProfileIfNeeded() }
+            } else if !welcomeDone {
+                WelcomeFlow(onComplete: { welcomeDone = true })
             } else {
                 switch auth.state {
                 case .unknown:

@@ -18,6 +18,10 @@ struct SettingsView: View {
     @State private var isLoadingDemo = false
     @State private var cloudKitToggle = PersistenceController.isCloudKitSyncEnabled
     @State private var showCloudKitRestartHint = false
+    @State private var notifEnabled  = LocalNotificationService.shared.enabled
+    @State private var notifWeekly   = LocalNotificationService.shared.weeklyRecapEnabled
+    @State private var notifSubs     = LocalNotificationService.shared.subscriptionRenewalEnabled
+    @State private var notifBudget   = LocalNotificationService.shared.budgetThresholdEnabled
     @State private var savedToast: String?
 
     static let availableModels: [(String, String)] = [
@@ -229,6 +233,64 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.themeLink")
+                }
+
+                section("Notifications") {
+                    SettingsRow("Allow notifications",
+                                subtitle: notifEnabled ? "Approved" : "Off",
+                                icon: "bell.fill",
+                                tint: .pink) {
+                        Toggle("", isOn: $notifEnabled)
+                            .labelsHidden()
+                            .onChange(of: notifEnabled) { _, new in
+                                Task {
+                                    if new {
+                                        let granted = await LocalNotificationService.shared.requestPermission()
+                                        await MainActor.run {
+                                            LocalNotificationService.shared.enabled = granted
+                                            notifEnabled = granted
+                                        }
+                                    } else {
+                                        LocalNotificationService.shared.enabled = false
+                                    }
+                                }
+                            }
+                    }
+                    if notifEnabled {
+                        RowDivider()
+                        SettingsRow("Weekly recap",
+                                    subtitle: "Sunday 6pm — how the week went",
+                                    icon: "calendar",
+                                    tint: .blue) {
+                            Toggle("", isOn: $notifWeekly)
+                                .labelsHidden()
+                                .onChange(of: notifWeekly) { _, new in
+                                    LocalNotificationService.shared.weeklyRecapEnabled = new
+                                }
+                        }
+                        RowDivider()
+                        SettingsRow("Subscription renewals",
+                                    subtitle: "Heads-up the day before a known sub charges",
+                                    icon: "arrow.triangle.2.circlepath",
+                                    tint: .purple) {
+                            Toggle("", isOn: $notifSubs)
+                                .labelsHidden()
+                                .onChange(of: notifSubs) { _, new in
+                                    LocalNotificationService.shared.subscriptionRenewalEnabled = new
+                                }
+                        }
+                        RowDivider()
+                        SettingsRow("Budget threshold",
+                                    subtitle: "Ping at 75% and 100% of the monthly budget",
+                                    icon: "chart.pie.fill",
+                                    tint: .orange) {
+                            Toggle("", isOn: $notifBudget)
+                                .labelsHidden()
+                                .onChange(of: notifBudget) { _, new in
+                                    LocalNotificationService.shared.budgetThresholdEnabled = new
+                                }
+                        }
+                    }
                 }
 
                 section("Storage") {

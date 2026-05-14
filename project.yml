@@ -25,6 +25,8 @@ targets:
     dependencies:
       - target: ShareExtension
         embed: true
+      - target: BudgetBotWidget
+        embed: true
     info:
       path: BudgetBot/Resources/Info.plist
       properties:
@@ -60,6 +62,30 @@ targets:
         SWIFT_EMIT_LOC_STRINGS: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  BudgetBotWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: BudgetBotWidget
+      - path: BudgetBot/Shared
+    info:
+      path: BudgetBotWidget/Info.plist
+      properties:
+        CFBundleDisplayName: BudgetBot
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: BudgetBotWidget/BudgetBotWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.dev.toma5od.BudgetBot
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.toma5od.BudgetBot.Widget
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
 
   ShareExtension:
     type: app-extension
@@ -125,6 +151,7 @@ schemes:
       targets:
         BudgetBot: all
         ShareExtension: all
+        BudgetBotWidget: all
         BudgetBotTests: [test]
         BudgetBotUITests: [test]
     test:
