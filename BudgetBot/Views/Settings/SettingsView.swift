@@ -158,6 +158,21 @@ struct SettingsView: View {
 
                     RowDivider()
 
+                    SettingsRow("Prefer on-device AI",
+                                subtitle: LocalLLMService.shared.availabilityReason.userFacingMessage,
+                                icon: "cpu",
+                                tint: .indigo) {
+                        Toggle("", isOn: Binding(
+                            get: { LocalLLMService.shared.isPreferred },
+                            set: { LocalLLMService.shared.isPreferred = $0 }
+                        ))
+                        .labelsHidden()
+                        .disabled(!LocalLLMService.shared.isAvailable)
+                    }
+                    .accessibilityIdentifier("settings.preferOnDeviceAI")
+
+                    RowDivider()
+
                     SettingsRow("Critique pass",
                                 subtitle: "A 2nd AI audits the 1st (costs 2× API)",
                                 icon: "checkmark.seal.fill",
@@ -306,6 +321,23 @@ struct SettingsView: View {
                                 }
                         }
                     }
+                }
+
+                section("Connections") {
+                    NavigationLink {
+                        ConnectBankView()
+                    } label: {
+                        SettingsRow("Connect a bank",
+                                    subtitle: BankSyncRegistry.active.isConfigured
+                                        ? "Linked accounts auto-sync transactions."
+                                        : "Coming soon — pending aggregator agreement.",
+                                    icon: "building.columns.fill",
+                                    tint: .blue) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.connectBank")
                 }
 
                 section("Storage") {

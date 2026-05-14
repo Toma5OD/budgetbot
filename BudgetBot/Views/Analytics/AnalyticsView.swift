@@ -1761,6 +1761,35 @@ struct AnalyticsView: View {
         error = nil
 
         let summary = buildSummary()
+
+        // On-device path: if the user opted in *and* Apple Intelligence
+        // is ready, generate locally instead of calling Anthropic. The
+        // local path returns plain text (no structured wire format), so
+        // we wrap the output in a single "general" recommendation. It's
+        // a privacy upgrade at the cost of fewer/structured tips —
+        // worth it for users who care.
+        if LocalLLMService.shared.isPreferred, LocalLLMService.shared.isAvailable {
+            do {
+                let text = try await LocalLLMService.shared.generate(
+                    summary,
+                    instructions: """
+                    You are a friendly budget coach. Given the user's spending summary, write 2-3 short, specific recommendations they could act on this month. Be concrete (name categories, amounts). No preamble — just the tips.
+                    """
+                )
+                for old in recs where !old.dismissed { context.delete(old) }
+                context.insert(AIRecommendation(
+                    kind: .general,
+                    title: "On-device tips",
+                    body: text
+                ))
+                try? context.save()
+                return
+            } catch {
+                // Fall through to the cloud path. Don't surface this as
+                // an error — it's expected when AI is downloading etc.
+            }
+        }
+
         do {
             let model = profiles.first?.aiModel ?? AIService.defaultModel
             guard let service = AIService.fromKeychain(model: model) else {
