@@ -40,6 +40,15 @@ struct AnalyticsView: View {
     /// persisted; the savings number ticks live as the slider moves.
     @State private var cutPercents: [String: Double] = [:]
 
+    /// Live finger-rotation on the donut. `donutRotation` is what we
+    /// render; `donutDragStartRotation` is the value at the moment a
+    /// drag began so we can do angular deltas without snap-backs.
+    /// `isDraggingDonut` enables a subtle 3D tilt while the user is
+    /// actively spinning it.
+    @State private var donutRotation: Angle = .zero
+    @State private var donutDragStartRotation: Angle = .zero
+    @State private var isDraggingDonut: Bool = false
+
     enum Range: String, CaseIterable, Identifiable {
         case week = "Week", month = "Month", quarter = "Quarter", year = "Year", custom = "Custom"
         var id: String { rawValue }
@@ -72,7 +81,6 @@ struct AnalyticsView: View {
                     flowChart
                     if regretSummary.count > 0 { dickheadSection }
                     categoryBreakdown
-                    spinWheelSection
                     cutAndSaveSection
                     valueForMoneySection
                     topMerchants
@@ -380,19 +388,23 @@ struct AnalyticsView: View {
 
     private var categoryBreakdown: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Where it goes").font(.headline)
+            HStack(spacing: 6) {
+                Text("Where it goes").font(.headline)
+                Spacer()
+                if !byCategory.isEmpty {
+                    Image(systemName: "hand.draw.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Text("drag to spin")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
             if byCategory.isEmpty {
                 EmptyState(text: "No expense data yet for this range.")
             } else {
-                donut
-                    .frame(height: 240)
-                    .rotation3DEffect(
-                        .degrees(selectedCategory == nil ? 0 : 12),
-                        axis: (x: 1, y: 0, z: 0),
-                        anchor: .center,
-                        perspective: 0.45
-                    )
-                    .animation(.spring(response: 0.45, dampingFraction: 0.8), value: selectedCategory?.id)
+                spinnableDonut
+                    .frame(height: 260)
 
                 VStack(spacing: 0) {
                     ForEach(byCategory) { c in
@@ -404,6 +416,54 @@ struct AnalyticsView: View {
         }
         .padding(16)
         .themedCard()
+    }
+
+    /// The donut wrapped in a GeometryReader so the drag gesture can
+    /// compute the touch angle relative to the centre of the chart.
+    /// Drag = rotation; the 3D tilt kicks in only while the finger is
+    /// down, so at rest the donut sits flat.
+    private var spinnableDonut: some View {
+        GeometryReader { geo in
+            let centre = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+            donut
+                .rotationEffect(donutRotation, anchor: .center)
+                .rotation3DEffect(
+                    .degrees(isDraggingDonut ? 14 : (selectedCategory == nil ? 0 : 12)),
+                    axis: (x: 1, y: 0.2, z: 0),
+                    anchor: .center,
+                    perspective: 0.45
+                )
+                .shadow(color: .black.opacity(isDraggingDonut ? 0.22 : 0.0),
+                        radius: 18, x: 0, y: 8)
+                .animation(.spring(response: 0.35, dampingFraction: 0.78),
+                           value: isDraggingDonut)
+                .animation(.spring(response: 0.45, dampingFraction: 0.8),
+                           value: selectedCategory?.id)
+                .contentShape(Circle())
+                .gesture(spinGesture(centre: centre))
+        }
+    }
+
+    private func spinGesture(centre: CGPoint) -> some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                if !isDraggingDonut { isDraggingDonut = true }
+                let current = atan2(value.location.y - centre.y, value.location.x - centre.x)
+                let start   = atan2(value.startLocation.y - centre.y,
+                                    value.startLocation.x - centre.x)
+                // Normalise the delta to [-π, π] so wrapping past the
+                // 12-o'clock mark doesn't snap the wheel halfway round.
+                var delta = current - start
+                while delta >  .pi { delta -= 2 * .pi }
+                while delta < -.pi { delta += 2 * .pi }
+                donutRotation = donutDragStartRotation + .radians(delta)
+            }
+            .onEnded { _ in
+                donutDragStartRotation = donutRotation
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                    isDraggingDonut = false
+                }
+            }
     }
 
     private var donut: some View {
@@ -502,8 +562,7 @@ struct AnalyticsView: View {
     }
 
     private func colorFor(_ c: CatTotal) -> Color {
-        let idx = byCategory.firstIndex(where: { $0.id == c.id }) ?? 0
-        return palette[idx % palette.count]
+        palette[c.paletteIndex % palette.count]
     }
 
     private func txs(forCategory name: String) -> [Transaction] {
@@ -1190,20 +1249,6 @@ struct AnalyticsView: View {
         }
     }
 
-    // MARK: - Spin Wheel
-
-    private var spinWheelSection: some View {
-        let palette = theme.current.chartPalette
-        let wedges: [SpinTheBudgetWheel.Wedge] = byCategory.enumerated().map { idx, c in
-            SpinTheBudgetWheel.Wedge(
-                label: c.name,
-                amount: c.amount,
-                color: palette[idx % palette.count]
-            )
-        }
-        return SpinTheBudgetWheel(wedges: wedges, currency: base, theme: theme.current)
-    }
-
     // MARK: - Cut & Save
 
     /// Interactive sliders: drag to hypothetically cut a category by X%
@@ -1339,7 +1384,16 @@ struct AnalyticsView: View {
         let paletteIndex: Int
     }
     struct CatTotal: Identifiable, Hashable {
-        let id = UUID(); let name: String; let amount: Decimal
+        let id = UUID()
+        let name: String
+        let amount: Decimal
+        /// Stable palette slot, assigned when `byCategory` is built. The
+        /// older code looked up the colour by re-querying `byCategory` and
+        /// matching by `id`, but `id` was a freshly generated UUID on every
+        /// access — meaning every lookup returned `nil` and every wedge
+        /// resolved to `palette[0]`, the colour-bug behind the donut
+        /// rendering as a single solid colour.
+        let paletteIndex: Int
     }
     struct PayeeTotal: Identifiable {
         let id = UUID(); let name: String; let total: Decimal; let count: Int
@@ -1371,10 +1425,13 @@ struct AnalyticsView: View {
                 totals[name, default: 0] += -slice.amount
             }
         }
-        return totals
-            .map { CatTotal(name: $0.key, amount: $0.value) }
+        let ordered = totals
+            .map { (name: $0.key, amount: $0.value) }
             .sorted { $0.amount > $1.amount }
-            .prefix(10).map { $0 }
+            .prefix(10)
+        return ordered.enumerated().map { idx, item in
+            CatTotal(name: item.name, amount: item.amount, paletteIndex: idx)
+        }
     }
 
     private var topPayees: [PayeeTotal] {
