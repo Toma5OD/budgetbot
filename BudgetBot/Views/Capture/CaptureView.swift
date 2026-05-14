@@ -278,6 +278,7 @@ struct CaptureView: View {
         vm.baseCurrency = p?.baseCurrency ?? Currencies.localeDefault
         vm.aiModel = p?.aiModel ?? AIService.defaultModel
         vm.yoloMode = p?.yoloMode ?? false
+        vm.critiqueMode = p?.critiqueMode ?? false
         vm.defaultAccountID = accounts.first?.id
         vm.ingestPending()
         queue.pump()

@@ -338,6 +338,165 @@ struct AIService {
         }
     }
 
+    // MARK: - Critique pass
+
+    private static let critiqueToolSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "corrections": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": [
+                        "draft_index": [
+                            "type": "integer",
+                            "description": "0-based position in the drafts array provided in the user message."
+                        ],
+                        "field": [
+                            "type": "string",
+                            "enum": ["amount", "payee", "currency", "date",
+                                     "suggested_category", "new_category",
+                                     "payment_method", "note"],
+                            "description": "Which field of the draft was wrong."
+                        ],
+                        "new_value": [
+                            "type": "string",
+                            "description": "Corrected value as a string. Amounts: signed decimal like '-52.10'. Dates: yyyy-MM-dd. Currency: ISO 4217. Payment method: cash/card/unknown."
+                        ],
+                        "rationale": [
+                            "type": "string",
+                            "description": "≤ 140 chars. Concrete: 'Receipt total 52.00, draft has 25.00 — misread 5 as 2'."
+                        ]
+                    ],
+                    "required": ["draft_index", "field", "new_value", "rationale"]
+                ]
+            ]
+        ],
+        "required": ["corrections"]
+    ]
+
+    private static let critiqueSystem = """
+    You are BudgetBot's quality auditor. The user is showing you:
+    1. The same receipt(s) a previous AI already processed.
+    2. The drafts that AI produced, as JSON.
+
+    Your job: spot CLEAR mistakes only. Report each correction via the \
+    `report_corrections` tool. If everything is correct, return an empty \
+    `corrections` array — don't invent issues.
+
+    Things to flag:
+    - Misread amounts (digit confusion like 5↔2, 8↔3, 0↔6, missed decimals).
+    - Wrong sign (refund shown as expense, or vice versa).
+    - Wrong currency (€ vs $ vs £ misread).
+    - Wrong date (year flipped, EU vs US date order misread).
+    - Wrong payee.
+    - Mis-categorisation that's clearly wrong (e.g. a pharmacy assigned to \
+    'Other Expense' when 'Pharmacy' fits perfectly).
+    - Missed transactions (the receipt has more line items than drafts).
+
+    Things to NOT flag:
+    - Style preferences. A reasonable category for a hardware shop is fine \
+    even if a better one exists.
+    - Adjacent categories that are both defensible (Coffee vs Dining for a \
+    café meal).
+    - Anything where the original AI's confidence < 0.4 and the draft is \
+    plausibly correct — those need a human, not you.
+
+    Output only via the tool. No prose.
+    """
+
+    func critique(
+        drafts: [ExtractedDraft],
+        against inputs: [Input],
+        defaultCurrency: String
+    ) async throws -> [CritiqueCorrection] {
+        guard !apiKey.isEmpty else { throw AIError.missingKey }
+        guard !drafts.isEmpty else { return [] }
+
+        var contentBlocks: [[String: Any]] = []
+        for input in inputs {
+            switch input {
+            case .image(let img):
+                guard let jpeg = img.jpegData(compressionQuality: 0.8) else { continue }
+                contentBlocks.append([
+                    "type": "image",
+                    "source": [
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": jpeg.base64EncodedString()
+                    ]
+                ])
+            case .pdf(let data, _):
+                contentBlocks.append([
+                    "type": "document",
+                    "source": [
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": data.base64EncodedString()
+                    ]
+                ])
+            case .text(let txt):
+                contentBlocks.append(["type": "text", "text": txt])
+            }
+        }
+
+        let draftsJSON = (try? JSONEncoder().encode(drafts.map(Self.summary(of:))))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        contentBlocks.append([
+            "type": "text",
+            "text": "Default currency: \(defaultCurrency).\n\nDrafts to audit (index matches order):\n\(draftsJSON)\n\nReport any clear mistakes."
+        ])
+
+        let body: [String: Any] = [
+            "model": model,
+            "max_tokens": 1024,
+            "system": [[
+                "type": "text",
+                "text": Self.critiqueSystem,
+                "cache_control": ["type": "ephemeral"]
+            ]],
+            "tools": [[
+                "name": "report_corrections",
+                "description": "Report each clear mistake in the drafts.",
+                "input_schema": Self.critiqueToolSchema,
+                "cache_control": ["type": "ephemeral"]
+            ]],
+            "tool_choice": ["type": "tool", "name": "report_corrections"],
+            "messages": [[
+                "role": "user",
+                "content": contentBlocks
+            ]]
+        ]
+
+        let raw = try await sendWithRetry(body: body, apiKey: apiKey, includePDFBeta: containsPDF(inputs))
+        let toolInput = try Self.toolUseInput(in: raw, expectedName: "report_corrections")
+        do {
+            return try JSONDecoder().decode(CritiqueResult.self, from: toolInput).corrections
+        } catch {
+            throw AIError.decoding(error.localizedDescription)
+        }
+    }
+
+    /// Compact summary the critique AI sees — keeps token count tight while
+    /// preserving every field that could be wrong.
+    private static func summary(of draft: ExtractedDraft) -> [String: String?] {
+        let df = DateFormatter()
+        df.calendar = Calendar(identifier: .iso8601)
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "yyyy-MM-dd"
+        return [
+            "date":               df.string(from: draft.date),
+            "amount":             "\(draft.amount)",
+            "currency":           draft.currency,
+            "payee":              draft.payee,
+            "suggested_category": draft.suggestedCategory,
+            "new_category":       draft.newCategory,
+            "payment_method":     draft.paymentMethod.rawValue,
+            "note":               draft.note,
+            "confidence":         "\(draft.confidence)"
+        ]
+    }
+
     // MARK: - Recommendations
 
     private static let recommendToolSchema: [String: Any] = [

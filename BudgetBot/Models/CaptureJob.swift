@@ -23,6 +23,7 @@ final class CaptureJob {
     var defaultCurrency: String = "EUR"
     var baseCurrency: String = "EUR"
     var yoloMode: Bool = false
+    var critiqueMode: Bool = false
 
     /// Free-form text the user attached.
     var textNote: String?
@@ -49,6 +50,7 @@ final class CaptureJob {
         defaultCurrency: String = "EUR",
         baseCurrency: String = "EUR",
         yoloMode: Bool = false,
+        critiqueMode: Bool = false,
         textNote: String? = nil
     ) {
         self.id = id
@@ -57,6 +59,7 @@ final class CaptureJob {
         self.defaultCurrency = defaultCurrency
         self.baseCurrency = baseCurrency
         self.yoloMode = yoloMode
+        self.critiqueMode = critiqueMode
         self.textNote = textNote
     }
 

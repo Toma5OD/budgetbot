@@ -135,7 +135,7 @@ final class CaptureQueueService {
         }
 
         do {
-            let drafts = try await service.extract(
+            var drafts = try await service.extract(
                 from: inputs,
                 defaultCurrency: job.defaultCurrency,
                 accounts: accountContexts
@@ -146,6 +146,23 @@ final class CaptureQueueService {
                 job.completedAt = .now
                 try? ctx.save()
                 return
+            }
+            if job.critiqueMode {
+                do {
+                    let corrections = try await service.critique(
+                        drafts: drafts,
+                        against: inputs,
+                        defaultCurrency: job.defaultCurrency
+                    )
+                    if !corrections.isEmpty {
+                        drafts = CritiqueApplier.apply(corrections, to: drafts)
+                    }
+                } catch {
+                    // Critique is best-effort: the first-pass extraction is
+                    // already useful. Don't fail the whole job over an auditor
+                    // mishap.
+                    print("⚠️ Critique pass failed (continuing without corrections): \(error)")
+                }
             }
             job.drafts = drafts
 

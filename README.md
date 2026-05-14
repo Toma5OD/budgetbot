@@ -84,6 +84,27 @@ On first launch you'll Sign in with Apple, then paste an Anthropic API key
 (get one at <https://console.anthropic.com>). The key is validated against
 `api.anthropic.com` before being stored in the iOS Keychain.
 
+## Project context — one person, one phone
+
+BudgetBot is built and maintained by a **single developer**. That shapes
+the engineering choices throughout: no backend to operate, no team
+roles to coordinate, no team CI plan to pay for. The goal is "a real
+production-quality iOS app that one human can keep running for years".
+
+The codebase reflects that:
+- **Zero hosted services we own** — the AI key is the user's, sync is
+  CloudKit (Apple's infra), FX rates come from the ECB feed. There is
+  nothing to deploy, monitor, or get paged for.
+- **SwiftData over Core Data** — less ceremony, less typing, fewer
+  places to make a mistake.
+- **Tests favour breadth over depth** — fast unit tests on every
+  decision-point (categorisation, FX, duplicate detection, subscription
+  inference) instead of brittle integration suites.
+
+If you're a future contributor or future-me coming back to this:
+read `SOLID.md` for the rules of the codebase, `PRIVACY.md` for the
+data-flow story, `TODO.md` for what was deliberately deferred.
+
 ## Tests & CI
 
 Local:
@@ -100,14 +121,53 @@ Override the simulator name if `iPhone 17` isn't on your machine:
 make test SIM='iPhone 16 Pro'
 ```
 
-CI runs **unit tests only** on every push and PR to `main` via GitHub
-Actions (`.github/workflows/ci.yml`). UI tests are excluded from CI
-to stay under GitHub's free macOS-minute budget (every macOS minute
-is billed 10× a Linux minute, and UI tests double the run length).
-Run them locally with `make test-ui` before opening a PR. Test
-results are uploaded as an `xcresult` artifact on every run.
+### CI on the GitHub free plan — what we ran into and why we're fine
 
-88 unit tests + 6 UI tests. All green.
+GitHub Free gives you **2,000 Actions minutes per month** on the
+default runners. iOS work needs **macOS runners**, and every macOS
+minute is billed at **10×** the rate of a Linux minute — so the
+practical budget is **200 macOS minutes/month**. Our previous CI
+pipeline (build + unit + UI tests) was ~10 minutes per push; about
+20 pushes burned the whole quota.
+
+After we hit the wall the workflow was trimmed to **unit tests only**,
+which cuts each run to ~3–4 minutes. At that rate the free quota
+comfortably covers ~50 pushes a month, which is more than enough for
+a solo cadence. UI tests still run locally on demand via
+`make test-ui` and are expected to be green before pushing anything
+UI-shaped.
+
+A **$0 Actions budget** is set on the GitHub account as a safety
+catch: if usage ever exceeds the free 200 macOS-minute envelope,
+Actions pauses for the rest of the cycle instead of running up a
+bill. The catch is that pushes during a paused cycle don't trigger
+CI — code still lands on `main`, you just verify locally.
+
+**Why this doesn't really affect us:**
+- We're solo. There's no team waiting on the CI signal to merge.
+- Local `make test-unit` runs in under a second. Tight loop on logic
+  changes is faster than a CI roundtrip anyway.
+- `make test-ui` covers what CI can't. For UI-affecting commits, run
+  it before pushing — that's the discipline.
+- Quota resets on the 1st of each month. If we ever pause, the worst
+  case is "no CI status badge for a few weeks" — not a real outage.
+
+**Avoiding future trips into the wall:**
+- Don't push CI-triggering churn for docs-only commits if you can
+  group them with code changes. (We don't have a `paths-ignore` rule
+  yet because it doesn't matter at our cadence; add one if it
+  starts to.)
+- The `concurrency: cancel-in-progress: true` in `ci.yml` already
+  kills superseded runs to save minutes on rapid pushes.
+- If a particular sprint is going to be UI-heavy, expect to bump the
+  local `make test-ui` cadence and skip pushing until tests pass —
+  no point burning minutes on a known-broken state.
+- The unit-tests-only CI is in `.github/workflows/ci.yml` line that
+  says `-only-testing:BudgetBotTests`. If you ever want UI tests in
+  CI for a real PR review, remove that line for one run; don't
+  permanently re-enable.
+
+131 unit tests + 8 UI tests. All green locally.
 
 ## Project structure
 

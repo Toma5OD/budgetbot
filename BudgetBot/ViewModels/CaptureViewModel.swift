@@ -13,6 +13,7 @@ final class CaptureViewModel {
     var baseCurrency: String = "EUR"
     var aiModel: String = AIService.defaultModel
     var yoloMode: Bool = false
+    var critiqueMode: Bool = false
     var defaultAccountID: UUID?
     var lastError: String?
 
@@ -69,6 +70,7 @@ final class CaptureViewModel {
             defaultCurrency: defaultCurrency,
             baseCurrency: baseCurrency,
             yoloMode: yoloMode,
+            critiqueMode: critiqueMode,
             textNote: textNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil
                 : textNote

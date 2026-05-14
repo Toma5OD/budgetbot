@@ -150,6 +150,23 @@ struct SettingsView: View {
 
                     RowDivider()
 
+                    SettingsRow("Critique pass",
+                                subtitle: "A 2nd AI audits the 1st (costs 2× API)",
+                                icon: "checkmark.seal.fill",
+                                tint: .green) {
+                        Toggle("", isOn: Binding(
+                            get: { profiles.first?.critiqueMode ?? false },
+                            set: {
+                                profiles.first?.critiqueMode = $0
+                                try? context.save()
+                            }
+                        ))
+                        .labelsHidden()
+                    }
+                    .accessibilityIdentifier("settings.critique")
+
+                    RowDivider()
+
                     NavigationLink {
                         APIKeyManagerView(savedToast: $savedToast,
                                           showRemoveConfirm: $showRemoveKeyConfirm)

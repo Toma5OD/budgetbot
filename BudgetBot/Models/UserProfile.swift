@@ -20,6 +20,12 @@ final class UserProfile {
     /// Off by default — surfaces each batch in the notification center for
     /// the user to confirm.
     var yoloMode: Bool = false
+    /// Critique mode: after the first AI extracts drafts, a second AI pass
+    /// audits the result against the original receipts and applies
+    /// corrections. Doubles per-batch API cost; off by default. Most of the
+    /// time it returns "all good" and is a no-op; occasionally it catches a
+    /// misread digit or a wrong category.
+    var critiqueMode: Bool = false
     var createdAt: Date = Date.now
 
     init(
@@ -33,6 +39,7 @@ final class UserProfile {
         aiModel: String = AIService.defaultModel,
         authProvider: String = "apple",
         yoloMode: Bool = false,
+        critiqueMode: Bool = false,
         createdAt: Date = .now
     ) {
         self.id = id
@@ -45,6 +52,7 @@ final class UserProfile {
         self.aiModel = aiModel
         self.authProvider = authProvider
         self.yoloMode = yoloMode
+        self.critiqueMode = critiqueMode
         self.createdAt = createdAt
     }
 }

@@ -23,6 +23,8 @@ Revisit only if user feedback after launch demands live sync.
 
 - **CSV / OFX / QIF import** — once Share Extension is in, this is the next
   most-asked feature for migration from other apps.
+- **Path-filtered CI** — add `paths-ignore` to skip CI on docs-only PRs
+  if the solo cadence ever ramps up enough to matter. Not needed today.
 - **Recurring transactions** model & UI (rent, subscriptions auto-posted).
 - **Transfers between accounts** as a first-class concept, not two unlinked tx.
 - **Per-category budget envelopes** + burndown chart on Analytics.
