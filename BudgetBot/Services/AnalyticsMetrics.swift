@@ -238,4 +238,242 @@ enum AnalyticsMetrics {
             }
         return WasteEstimate(regret: regret, staleSubscriptions: stale)
     }
+
+    // MARK: - The Drink Tab (alcohol + sober streaks)
+
+    struct DrinkStats: Equatable {
+        let totalSpent: Decimal
+        /// Number of alcohol transactions in the range.
+        let count: Int
+        /// Longest run of consecutive days within the range without an
+        /// alcohol transaction.
+        let longestSoberStreakDays: Int
+        /// Days since the last alcohol transaction up to `now`. `nil` if
+        /// there were never any in the supplied range.
+        let currentSoberStreakDays: Int?
+        /// Mean spend per drinking *day* (multiple alcohol tx on one day
+        /// count as a single drinking session for this metric).
+        let avgPerSession: Decimal
+        /// Most expensive single alcohol transaction's payee.
+        let topPayee: String?
+    }
+
+    static func drinkStats(
+        in txs: [Transaction],
+        base: String,
+        convert: Converter,
+        now: Date = .now,
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) -> DrinkStats {
+        let alcohol = txs.filter { tx in
+            tx.amount < 0 && MerchantClassifier.isAlcohol(
+                payee: tx.payee, categoryName: tx.category?.name)
+        }
+        let total = alcohol.reduce(Decimal(0)) { acc, tx in
+            acc + -tx.amountInBase(base, liveConvert: convert)
+        }
+
+        // Distinct days the user drank (for session math).
+        let drinkingDays: Set<Date> = Set(alcohol.map {
+            calendar.startOfDay(for: $0.date)
+        })
+        let avgPerSession: Decimal = drinkingDays.isEmpty
+            ? 0
+            : total / Decimal(drinkingDays.count)
+
+        // Longest sober streak: scan the date range covered by `txs` and
+        // count the largest gap (in days) between consecutive drinking
+        // days. The range endpoints (earliest tx date / now) bound the
+        // scan so a long stretch with no transactions at all still
+        // contributes.
+        let allDates = txs.map { calendar.startOfDay(for: $0.date) }.sorted()
+        let rangeStart = allDates.first ?? calendar.startOfDay(for: now)
+        let rangeEnd   = calendar.startOfDay(for: now)
+        let sorted = drinkingDays.sorted()
+        var longestGap = 0
+        var previous = rangeStart
+        for d in sorted {
+            let gap = daysBetween(previous, and: d, in: calendar) - 1
+            longestGap = max(longestGap, max(0, gap))
+            previous = d
+        }
+        if let last = sorted.last {
+            longestGap = max(longestGap, daysBetween(last, and: rangeEnd, in: calendar))
+        } else if !allDates.isEmpty {
+            longestGap = max(longestGap, daysBetween(rangeStart, and: rangeEnd, in: calendar))
+        }
+
+        let current: Int? = sorted.last.map { last in
+            max(0, daysBetween(last, and: rangeEnd, in: calendar))
+        }
+
+        let top = alcohol.max(by: { lhs, rhs in
+            -lhs.amountInBase(base, liveConvert: convert)
+                < -rhs.amountInBase(base, liveConvert: convert)
+        })?.payee
+
+        return DrinkStats(
+            totalSpent: total,
+            count: alcohol.count,
+            longestSoberStreakDays: longestGap,
+            currentSoberStreakDays: current,
+            avgPerSession: avgPerSession,
+            topPayee: top
+        )
+    }
+
+    // MARK: - Fast food / delivery
+
+    struct FastFoodStats: Equatable {
+        let totalSpent: Decimal
+        let count: Int
+        /// Days since the last fast-food / delivery transaction up to
+        /// `now`. `nil` if there were never any in the range.
+        let daysSinceLast: Int?
+        /// Merchant that received the largest total fast-food spend.
+        let topMerchant: String?
+    }
+
+    static func fastFoodStats(
+        in txs: [Transaction],
+        base: String,
+        convert: Converter,
+        now: Date = .now,
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) -> FastFoodStats {
+        let ff = txs.filter { $0.amount < 0 && MerchantClassifier.isFastFood($0.payee) }
+        let total = ff.reduce(Decimal(0)) { acc, tx in
+            acc + -tx.amountInBase(base, liveConvert: convert)
+        }
+        let lastDate = ff.map(\.date).max()
+        let daysSince: Int? = lastDate.map {
+            max(0, daysBetween(calendar.startOfDay(for: $0),
+                               and: calendar.startOfDay(for: now),
+                               in: calendar))
+        }
+        let byPayee = Dictionary(grouping: ff, by: \.payee)
+            .mapValues { items in
+                items.reduce(Decimal(0)) { acc, tx in
+                    acc + -tx.amountInBase(base, liveConvert: convert)
+                }
+            }
+        let topMerchant = byPayee.max { $0.value < $1.value }?.key
+        return FastFoodStats(
+            totalSpent: total, count: ff.count,
+            daysSinceLast: daysSince, topMerchant: topMerchant
+        )
+    }
+
+    // MARK: - Coffee
+
+    struct CoffeeStats: Equatable {
+        let totalSpent: Decimal
+        let count: Int
+        let avgPerCup: Decimal
+        /// Spend extrapolated to a full year, holding the period rate
+        /// constant. Useful as a "if you keep going at this rate"
+        /// gut-punch.
+        let annualisedCost: Decimal
+        /// Counterfactual: same number of cups at €0.40 each (rough
+        /// home-brew price). The difference between this and totalSpent
+        /// is `homeBrewSavings`.
+        let homeBrewCost: Decimal
+        let homeBrewSavings: Decimal
+        let favouriteCafé: String?
+    }
+
+    static func coffeeStats(
+        in txs: [Transaction],
+        base: String,
+        convert: Converter,
+        rangeDays: Int
+    ) -> CoffeeStats {
+        let coffee = txs.filter { $0.amount < 0 && MerchantClassifier.isCoffee($0.payee) }
+        let total = coffee.reduce(Decimal(0)) { acc, tx in
+            acc + -tx.amountInBase(base, liveConvert: convert)
+        }
+        let count = coffee.count
+        let avg: Decimal = count == 0 ? 0 : total / Decimal(count)
+        let safeRange = max(1, rangeDays)
+        let annual = total * Decimal(365) / Decimal(safeRange)
+        let homeBrew = Decimal(count) * Decimal(0.40)
+        let savings  = max(0, total - homeBrew)
+
+        let byCafé = Dictionary(grouping: coffee, by: \.payee)
+            .mapValues { items in
+                items.reduce(Decimal(0)) { acc, tx in
+                    acc + -tx.amountInBase(base, liveConvert: convert)
+                }
+            }
+        let fav = byCafé.max { $0.value < $1.value }?.key
+
+        return CoffeeStats(
+            totalSpent: total,
+            count: count,
+            avgPerCup: avg,
+            annualisedCost: annual,
+            homeBrewCost: homeBrew,
+            homeBrewSavings: savings,
+            favouriteCafé: fav
+        )
+    }
+
+    // MARK: - Brand Tax (premium vs value retail)
+
+    struct BrandTaxStats: Equatable {
+        let premiumSpend: Decimal
+        let valueSpend: Decimal
+        /// Premium spend as a fraction of total *comparable* spend
+        /// (premium + value). `nil` if neither bucket has activity.
+        let premiumShare: Double?
+        let topPremiumMerchant: String?
+        /// Naïve estimate: if the premium spend had gone to a value
+        /// retailer instead, assume a 30% discount on it. Surfaced as a
+        /// "hypothetical" line.
+        let estimatedSavingsAt30Off: Decimal
+    }
+
+    static func brandTax(
+        in txs: [Transaction],
+        base: String,
+        convert: Converter
+    ) -> BrandTaxStats {
+        let premium = txs.filter {
+            $0.amount < 0 && MerchantClassifier.isPremiumRetail($0.payee)
+        }
+        let value = txs.filter {
+            $0.amount < 0 && MerchantClassifier.isValueRetail($0.payee)
+        }
+        let pSum = premium.reduce(Decimal(0)) { acc, tx in
+            acc + -tx.amountInBase(base, liveConvert: convert)
+        }
+        let vSum = value.reduce(Decimal(0)) { acc, tx in
+            acc + -tx.amountInBase(base, liveConvert: convert)
+        }
+        let comparable = pSum + vSum
+        let share: Double? = comparable == 0 ? nil
+            : NSDecimalNumber(decimal: pSum).doubleValue
+                / NSDecimalNumber(decimal: comparable).doubleValue
+        let topPremium = Dictionary(grouping: premium, by: \.payee)
+            .mapValues { items in
+                items.reduce(Decimal(0)) { acc, tx in
+                    acc + -tx.amountInBase(base, liveConvert: convert)
+                }
+            }
+            .max { $0.value < $1.value }?.key
+        let savings = pSum * Decimal(0.30)
+        return BrandTaxStats(
+            premiumSpend: pSum,
+            valueSpend: vSum,
+            premiumShare: share,
+            topPremiumMerchant: topPremium,
+            estimatedSavingsAt30Off: savings
+        )
+    }
+
+    // MARK: - Helpers
+
+    private static func daysBetween(_ a: Date, and b: Date, in cal: Calendar) -> Int {
+        cal.dateComponents([.day], from: a, to: b).day ?? 0
+    }
 }

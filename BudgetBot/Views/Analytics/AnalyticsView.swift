@@ -35,11 +35,6 @@ struct AnalyticsView: View {
     @State private var expandedMerchant: String?
     @State private var expandedDay: Date?
 
-    /// Per-category cut percentages driven by the Cut & Save sliders.
-    /// Lives in the view because it's purely interactive — nothing is
-    /// persisted; the savings number ticks live as the slider moves.
-    @State private var cutPercents: [String: Double] = [:]
-
     /// Live finger-rotation on the donut. `donutRotation` is what we
     /// render; `donutDragStartRotation` is the value at the moment a
     /// drag began so we can do angular deltas without snap-backs.
@@ -81,7 +76,7 @@ struct AnalyticsView: View {
                     flowChart
                     if regretSummary.count > 0 { dickheadSection }
                     categoryBreakdown
-                    cutAndSaveSection
+                    behaviouralCards
                     valueForMoneySection
                     topMerchants
                     viceTrackerSection
@@ -422,32 +417,52 @@ struct AnalyticsView: View {
     /// compute the touch angle relative to the centre of the chart.
     /// Drag = rotation; the 3D tilt kicks in only while the finger is
     /// down, so at rest the donut sits flat.
+    ///
+    /// The previous version attached the gesture to the Chart itself,
+    /// which has its own internal touch handling for `chartAngleSelection`
+    /// — that swallowed the drag and nothing rotated. The fix layers a
+    /// transparent annular gesture-catcher *above* the chart in a ZStack
+    /// and uses `simultaneousGesture` so the chart's tap-selection still
+    /// works in the centre, while the catcher owns angular drags.
     private var spinnableDonut: some View {
         GeometryReader { geo in
             let centre = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-            donut
-                .rotationEffect(donutRotation, anchor: .center)
-                .rotation3DEffect(
-                    .degrees(isDraggingDonut ? 14 : (selectedCategory == nil ? 0 : 12)),
-                    axis: (x: 1, y: 0.2, z: 0),
-                    anchor: .center,
-                    perspective: 0.45
-                )
-                .shadow(color: .black.opacity(isDraggingDonut ? 0.22 : 0.0),
-                        radius: 18, x: 0, y: 8)
-                .animation(.spring(response: 0.35, dampingFraction: 0.78),
-                           value: isDraggingDonut)
-                .animation(.spring(response: 0.45, dampingFraction: 0.8),
-                           value: selectedCategory?.id)
-                .contentShape(Circle())
-                .gesture(spinGesture(centre: centre))
+            ZStack {
+                donut
+                    .rotationEffect(donutRotation, anchor: .center)
+                    .rotation3DEffect(
+                        .degrees(isDraggingDonut ? 14 : (selectedCategory == nil ? 0 : 12)),
+                        axis: (x: 1, y: 0.2, z: 0),
+                        anchor: .center,
+                        perspective: 0.45
+                    )
+                    .shadow(color: .black.opacity(isDraggingDonut ? 0.22 : 0.0),
+                            radius: 18, x: 0, y: 8)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.78),
+                               value: isDraggingDonut)
+                    .animation(.spring(response: 0.45, dampingFraction: 0.8),
+                               value: selectedCategory?.id)
+                    .allowsHitTesting(true)   // taps still hit chartAngleSelection
+
+                // Transparent overlay that captures the angular drag.
+                // Uses `simultaneousGesture` so we don't block the chart's
+                // tap handling for wedge selection.
+                Circle()
+                    .fill(Color.clear)
+                    .contentShape(Circle())
+                    .simultaneousGesture(spinGesture(centre: centre))
+            }
         }
     }
 
     private func spinGesture(centre: CGPoint) -> some Gesture {
-        DragGesture(minimumDistance: 12)
+        DragGesture(minimumDistance: 4)
             .onChanged { value in
-                if !isDraggingDonut { isDraggingDonut = true }
+                if !isDraggingDonut {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        isDraggingDonut = true
+                    }
+                }
                 let current = atan2(value.location.y - centre.y, value.location.x - centre.x)
                 let start   = atan2(value.startLocation.y - centre.y,
                                     value.startLocation.x - centre.x)
@@ -1249,76 +1264,296 @@ struct AnalyticsView: View {
         }
     }
 
-    // MARK: - Cut & Save
+    // MARK: - Behavioural cards
+    //
+    // Four narrowly-scoped insights that surface non-obvious patterns:
+    // the drink tab + sober streak, fast food / delivery exposure, the
+    // coffee bill at scale, and a premium-vs-value retail "brand tax"
+    // estimate. Each card only renders when there's enough data for the
+    // insight to mean something.
 
-    /// Interactive sliders: drag to hypothetically cut a category by X%
-    /// and watch a running total tick up live. Pure fun-with-numbers,
-    /// no persistence.
-    private var cutAndSaveSection: some View {
-        let top = Array(byCategory.prefix(5))
-        let savings: Decimal = top.reduce(Decimal(0)) { acc, c in
-            let pct = cutPercents[c.name] ?? 0
-            return acc + (c.amount * Decimal(pct / 100))
+    private var behaviouralCards: some View {
+        VStack(spacing: 14) {
+            drinkTabCard
+            fastFoodCard
+            coffeeCard
+            brandTaxCard
         }
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Cut & save").font(.headline)
-                Spacer()
-                if savings > 0 {
-                    Text("save")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    AnimatedDecimal(
-                        target: savings, currency: base,
-                        font: .title3.bold().monospacedDigit(),
-                        color: theme.current.incomeColor,
-                        duration: 0.5
-                    )
-                }
-            }
-            if top.isEmpty {
-                EmptyState(text: "Capture a few receipts first — sliders need categories to play with.")
-            } else {
-                VStack(spacing: 14) {
-                    ForEach(top) { c in
-                        cutRow(c)
-                    }
-                }
-                if savings > 0 {
-                    Text("Hypothetical. We're not actually cancelling Netflix — yet.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        }
-        .padding(16)
-        .themedCard()
     }
 
+    // MARK: - The Drink Tab
+
     @ViewBuilder
-    private func cutRow(_ c: CatTotal) -> some View {
-        let pct = cutPercents[c.name] ?? 0
-        let saved = c.amount * Decimal(pct / 100)
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Circle().fill(colorFor(c)).frame(width: 8, height: 8)
-                Text(c.name).font(.callout)
-                Spacer()
-                Text("\(Int(pct.rounded()))%")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Text("→ \(CurrencyFormatter.string(for: saved, currency: base))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(theme.current.incomeColor)
+    private var drinkTabCard: some View {
+        let s = AnalyticsMetrics.drinkStats(
+            in: inRange, base: base, convert: convert)
+        if s.count > 0 || (s.currentSoberStreakDays ?? 0) > 0 {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Label("The Drink Tab", systemImage: "wineglass.fill")
+                        .font(.headline)
+                        .foregroundStyle(palette[5 % palette.count])
+                    Spacer()
+                    if let current = s.currentSoberStreakDays {
+                        soberStreakChip(days: current)
+                    }
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Spent").font(.caption2).foregroundStyle(.tertiary)
+                        AnimatedDecimal(
+                            target: s.totalSpent, currency: base,
+                            font: .title.bold().monospacedDigit(),
+                            color: theme.current.expenseColor
+                        )
+                        if s.count > 0 {
+                            Text("\(s.count) round\(s.count == 1 ? "" : "s") · avg \(CurrencyFormatter.string(for: s.avgPerSession, currency: base))/session")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("Longest dry stretch")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                        HStack(spacing: 4) {
+                            AnimatedInt(target: s.longestSoberStreakDays,
+                                        font: .title2.bold().monospacedDigit(),
+                                        color: theme.current.incomeColor)
+                            Text("days").font(.caption.bold()).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if let payee = s.topPayee, s.count > 0 {
+                    Divider()
+                    Text("Biggest tab: \(payee)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            Slider(
-                value: Binding(
-                    get: { cutPercents[c.name] ?? 0 },
-                    set: { new in cutPercents[c.name] = new }
-                ),
-                in: 0...100, step: 5
-            )
-            .tint(colorFor(c))
+            .padding(16)
+            .themedCard()
+        }
+    }
+
+    private func soberStreakChip(days: Int) -> some View {
+        let emoji: String = {
+            switch days {
+            case 0:       return "🍺"
+            case 1...3:   return "💧"
+            case 4...7:   return "🌱"
+            case 8...20:  return "🌿"
+            default:      return "🌳"
+            }
+        }()
+        return HStack(spacing: 4) {
+            Text(emoji)
+            Text("\(days)d sober")
+                .font(.caption.bold().monospacedDigit())
+        }
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(theme.current.incomeColor.opacity(0.15), in: Capsule())
+        .foregroundStyle(theme.current.incomeColor)
+        .breathingPulse(amplitude: 0.02, period: 3.0)
+    }
+
+    // MARK: - Fast food
+
+    @ViewBuilder
+    private var fastFoodCard: some View {
+        let s = AnalyticsMetrics.fastFoodStats(
+            in: inRange, base: base, convert: convert)
+        if s.count > 0 {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Fast food & delivery", systemImage: "bag.fill")
+                        .font(.headline)
+                        .foregroundStyle(palette[3 % palette.count])
+                    Spacer()
+                    if let d = s.daysSinceLast {
+                        Text(d == 0 ? "today" : "\(d)d ago")
+                            .font(.caption.monospacedDigit())
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(.thinMaterial, in: Capsule())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack(alignment: .firstTextBaseline) {
+                    AnimatedDecimal(
+                        target: s.totalSpent, currency: base,
+                        font: .title.bold().monospacedDigit(),
+                        color: theme.current.expenseColor
+                    )
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 1) {
+                        AnimatedInt(target: s.count,
+                                    font: .title3.bold().monospacedDigit())
+                        Text("orders").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+
+                if let top = s.topMerchant {
+                    Divider()
+                    HStack {
+                        Image(systemName: "flame.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Text("Most-ordered: \(top)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(16)
+            .themedCard()
+        }
+    }
+
+    // MARK: - Coffee
+
+    @ViewBuilder
+    private var coffeeCard: some View {
+        let s = AnalyticsMetrics.coffeeStats(
+            in: inRange, base: base, convert: convert, rangeDays: daysInRange)
+        if s.count > 0 {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("The Coffee Bill", systemImage: "cup.and.saucer.fill")
+                        .font(.headline)
+                        .foregroundStyle(palette[2 % palette.count])
+                    Spacer()
+                    HStack(spacing: 4) {
+                        AnimatedInt(target: s.count, font: .callout.bold().monospacedDigit())
+                        Text("cups").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(.thinMaterial, in: Capsule())
+                }
+
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("This period").font(.caption2).foregroundStyle(.tertiary)
+                        AnimatedDecimal(
+                            target: s.totalSpent, currency: base,
+                            font: .title2.bold().monospacedDigit(),
+                            color: .primary
+                        )
+                        Text("avg \(CurrencyFormatter.string(for: s.avgPerCup, currency: base)) / cup")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Per year at this rate").font(.caption2).foregroundStyle(.tertiary)
+                        AnimatedDecimal(
+                            target: s.annualisedCost, currency: base,
+                            font: .title3.bold().monospacedDigit(),
+                            color: theme.current.expenseColor
+                        )
+                    }
+                }
+
+                if s.homeBrewSavings > 0 {
+                    HStack(spacing: 6) {
+                        Image(systemName: "house.fill")
+                            .font(.caption2)
+                            .foregroundStyle(theme.current.incomeColor)
+                        Text("Brewed at home, that'd be \(CurrencyFormatter.string(for: s.homeBrewSavings, currency: base)) back.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let fav = s.favouriteCafé {
+                    Text("Favourite spot: \(fav)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(16)
+            .themedCard()
+        }
+    }
+
+    // MARK: - Brand Tax
+
+    @ViewBuilder
+    private var brandTaxCard: some View {
+        let s = AnalyticsMetrics.brandTax(
+            in: inRange, base: base, convert: convert)
+        if let share = s.premiumShare, s.premiumSpend > 0 || s.valueSpend > 0 {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Brand Tax", systemImage: "tag.fill")
+                        .font(.headline)
+                        .foregroundStyle(palette[1 % palette.count])
+                    Spacer()
+                    Text("\(Int((share * 100).rounded()))% premium")
+                        .font(.caption.bold().monospacedDigit())
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(
+                            (share > 0.5 ? theme.current.expenseColor
+                                         : theme.current.incomeColor).opacity(0.15),
+                            in: Capsule()
+                        )
+                        .foregroundStyle(share > 0.5 ? theme.current.expenseColor
+                                                    : theme.current.incomeColor)
+                }
+
+                // Split bar: premium vs value side by side.
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        if s.premiumSpend > 0 {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(LinearGradient(
+                                    colors: [theme.current.expenseColor,
+                                             theme.current.expenseColor.opacity(0.6)],
+                                    startPoint: .leading, endPoint: .trailing))
+                                .frame(width: geo.size.width * (appearAnimation ? share : 0))
+                        }
+                        if s.valueSpend > 0 {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(LinearGradient(
+                                    colors: [theme.current.incomeColor,
+                                             theme.current.incomeColor.opacity(0.6)],
+                                    startPoint: .leading, endPoint: .trailing))
+                                .frame(width: geo.size.width * (appearAnimation ? (1 - share) : 0))
+                        }
+                    }
+                    .animation(.spring(response: 0.9, dampingFraction: 0.85), value: appearAnimation)
+                }
+                .frame(height: 14)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Premium").font(.caption2).foregroundStyle(.tertiary)
+                        Text(CurrencyFormatter.string(for: s.premiumSpend, currency: base))
+                            .font(.callout.bold().monospacedDigit())
+                            .foregroundStyle(theme.current.expenseColor)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("Value").font(.caption2).foregroundStyle(.tertiary)
+                        Text(CurrencyFormatter.string(for: s.valueSpend, currency: base))
+                            .font(.callout.bold().monospacedDigit())
+                            .foregroundStyle(theme.current.incomeColor)
+                    }
+                }
+
+                if s.estimatedSavingsAt30Off > 0, let top = s.topPremiumMerchant {
+                    Divider()
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(theme.current.incomeColor)
+                        Text("Swap \(top) for the own-brand and you'd claw back about \(CurrencyFormatter.string(for: s.estimatedSavingsAt30Off, currency: base)).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(16)
+            .themedCard()
         }
     }
 

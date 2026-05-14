@@ -175,6 +175,152 @@ final class AnalyticsMetricsTests: XCTestCase {
 
     // MARK: - Waste estimate
 
+    // MARK: - Drink stats (alcohol + sober streak)
+
+    func test_drinkStats_currentStreakIsDaysSinceLastAlcoholTx() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let alcohol = makeCategory(ctx, "Alcohol")
+        let now = ISO8601DateFormatter().date(from: "2026-05-14T12:00:00Z")!
+        let cal = Calendar(identifier: .gregorian)
+
+        // Last drink 10 days ago.
+        _ = makeTx(ctx, amount: -38, payee: "The Long Hall",
+                   date: cal.date(byAdding: .day, value: -10, to: now)!,
+                   category: alcohol)
+
+        let s = AnalyticsMetrics.drinkStats(
+            in: try ctx.fetch(FetchDescriptor<Transaction>()),
+            base: "EUR", convert: identityConvert,
+            now: now, calendar: cal)
+
+        XCTAssertEqual(s.currentSoberStreakDays, 10)
+        XCTAssertEqual(s.count, 1)
+        XCTAssertEqual(s.totalSpent, 38)
+    }
+
+    func test_drinkStats_longestStreakSpansBetweenSessions() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let alcohol = makeCategory(ctx, "Alcohol")
+        let now = ISO8601DateFormatter().date(from: "2026-05-14T12:00:00Z")!
+        let cal = Calendar(identifier: .gregorian)
+
+        // Two drinks: 30 days ago and 5 days ago → longest gap is the
+        // 24-day stretch in between (gap = 25 - 1 = 24 days sober).
+        _ = makeTx(ctx, amount: -20, payee: "Mulligan",
+                   date: cal.date(byAdding: .day, value: -30, to: now)!,
+                   category: alcohol)
+        _ = makeTx(ctx, amount: -25, payee: "Eight Degrees Brewing — Taproom",
+                   date: cal.date(byAdding: .day, value: -5, to: now)!,
+                   category: alcohol)
+        // Plus an unrelated tx so the range starts further back.
+        _ = makeTx(ctx, amount: -10, payee: "Boots",
+                   date: cal.date(byAdding: .day, value: -40, to: now)!)
+
+        let s = AnalyticsMetrics.drinkStats(
+            in: try ctx.fetch(FetchDescriptor<Transaction>()),
+            base: "EUR", convert: identityConvert,
+            now: now, calendar: cal)
+
+        XCTAssertGreaterThanOrEqual(s.longestSoberStreakDays, 24)
+        XCTAssertEqual(s.currentSoberStreakDays, 5)
+    }
+
+    func test_drinkStats_noAlcoholReturnsZerosAndNilStreak() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        _ = makeTx(ctx, amount: -10, payee: "Tesco")
+        let s = AnalyticsMetrics.drinkStats(
+            in: try ctx.fetch(FetchDescriptor<Transaction>()),
+            base: "EUR", convert: identityConvert)
+        XCTAssertEqual(s.totalSpent, 0)
+        XCTAssertEqual(s.count, 0)
+        XCTAssertNil(s.currentSoberStreakDays)
+    }
+
+    // MARK: - Fast food stats
+
+    func test_fastFoodStats_classifiesDeliveryAndChainsButNotSitDown() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let now = ISO8601DateFormatter().date(from: "2026-05-14T12:00:00Z")!
+        let cal = Calendar(identifier: .gregorian)
+
+        _ = makeTx(ctx, amount: -38, payee: "Domino's Pizza — Camden St",
+                   date: cal.date(byAdding: .day, value: -2, to: now)!)
+        _ = makeTx(ctx, amount: -12, payee: "Deliveroo",
+                   date: cal.date(byAdding: .day, value: -6, to: now)!)
+        // Sit-down restaurant — must NOT count as fast food.
+        _ = makeTx(ctx, amount: -54, payee: "Manifesto Rathmines")
+
+        let s = AnalyticsMetrics.fastFoodStats(
+            in: try ctx.fetch(FetchDescriptor<Transaction>()),
+            base: "EUR", convert: identityConvert,
+            now: now, calendar: cal)
+
+        XCTAssertEqual(s.count, 2,
+                       "Manifesto is a sit-down restaurant, not fast food")
+        XCTAssertEqual(s.totalSpent, 50)
+        XCTAssertEqual(s.daysSinceLast, 2)
+        XCTAssertEqual(s.topMerchant, "Domino's Pizza — Camden St")
+    }
+
+    // MARK: - Coffee stats
+
+    func test_coffeeStats_annualisesAndComputesHomeBrewSavings() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        // 10 cups at €4 each over 30 days.
+        for _ in 0..<10 {
+            _ = makeTx(ctx, amount: -4, payee: "Insomnia")
+        }
+        let s = AnalyticsMetrics.coffeeStats(
+            in: try ctx.fetch(FetchDescriptor<Transaction>()),
+            base: "EUR", convert: identityConvert, rangeDays: 30)
+
+        XCTAssertEqual(s.count, 10)
+        XCTAssertEqual(s.totalSpent, 40)
+        XCTAssertEqual(s.avgPerCup, 4)
+        // 40 * 365 / 30 ≈ 486.67
+        let annual = NSDecimalNumber(decimal: s.annualisedCost).doubleValue
+        XCTAssertEqual(annual, 486.67, accuracy: 0.5)
+        // Home brew @ €0.40 × 10 = €4 → saving of €36.
+        XCTAssertEqual(s.homeBrewSavings, 36)
+        XCTAssertEqual(s.favouriteCafé, "Insomnia")
+    }
+
+    // MARK: - Brand tax
+
+    func test_brandTax_shareAndSavingsEstimate() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        _ = makeTx(ctx, amount: -100, payee: "Brown Thomas Online")
+        _ = makeTx(ctx, amount: -50,  payee: "Marks & Spencer Grafton")
+        _ = makeTx(ctx, amount: -50,  payee: "Lidl Phibsboro")
+
+        let s = AnalyticsMetrics.brandTax(
+            in: try ctx.fetch(FetchDescriptor<Transaction>()),
+            base: "EUR", convert: identityConvert)
+
+        XCTAssertEqual(s.premiumSpend, 150)
+        XCTAssertEqual(s.valueSpend, 50)
+        XCTAssertEqual(s.premiumShare ?? 0, 0.75, accuracy: 0.001)
+        XCTAssertEqual(s.topPremiumMerchant, "Brown Thomas Online")
+        // 30% of 150 = 45
+        XCTAssertEqual(s.estimatedSavingsAt30Off, 45)
+    }
+
+    func test_brandTax_returnsNilShareWhenNoComparableSpend() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        _ = makeTx(ctx, amount: -10, payee: "Random Corner Shop")
+        let s = AnalyticsMetrics.brandTax(
+            in: try ctx.fetch(FetchDescriptor<Transaction>()),
+            base: "EUR", convert: identityConvert)
+        XCTAssertNil(s.premiumShare)
+    }
+
     func test_wasteEstimate_combinesRegretsAndStaleSubs() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
