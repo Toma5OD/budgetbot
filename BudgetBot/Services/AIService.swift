@@ -117,11 +117,31 @@ struct AIService {
 
     // MARK: - Extraction
 
+    /// The controlled vocabulary the AI must pick from. Mirrors
+    /// `TxCategory.defaults`. If a receipt fits NONE of these, the AI sets
+    /// `new_category` instead — see system prompt.
     private static let categoryEnum: [String] = [
-        "Groceries", "Dining", "Coffee", "Transport", "Fuel", "Rent",
-        "Utilities", "Subscriptions", "Entertainment", "Shopping", "Health",
-        "Travel", "Other Expense", "Salary", "Freelance", "Refund", "Gift",
-        "Interest", "Other Income"
+        // Food & drink
+        "Groceries", "Dining", "Coffee", "Alcohol",
+        // Transport
+        "Fuel", "Public Transport", "Taxi & Ride-share", "Parking", "Car Maintenance",
+        // Recurring bills
+        "Rent", "Mortgage", "Electricity", "Heating & Gas", "Water",
+        "Internet", "Mobile Plan", "Streaming", "Other Subscriptions",
+        "Insurance", "Taxes", "Bank Fees", "Loan Payment",
+        // Health
+        "Pharmacy", "Medical", "Personal Care",
+        // Home & family
+        "Home & Garden", "Pets", "Childcare",
+        // Lifestyle
+        "Entertainment", "Shopping", "Clothing", "Electronics",
+        "Books & Media", "Hobbies", "Travel", "Education",
+        "Charity", "Gifts Given",
+        // Catch-all
+        "Cash Withdrawal", "Other Expense",
+        // Income
+        "Salary", "Freelance", "Investment Returns", "Refund",
+        "Gift Received", "Interest", "Other Income"
     ]
 
     private static let extractToolSchema: [String: Any] = [
@@ -155,7 +175,11 @@ struct AIService {
                         "suggested_category": [
                             "type": "string",
                             "enum": categoryEnum,
-                            "description": "The category for THIS draft. When a single receipt spans multiple categories, emit ONE DRAFT PER CATEGORY (see system instructions)."
+                            "description": "BEST match from the existing categories. Pick whichever fits even loosely — only leave this empty if truly nothing in the list applies, in which case use `new_category` instead."
+                        ],
+                        "new_category": [
+                            "type": "string",
+                            "description": "Set ONLY when NO `suggested_category` value fits. Use a short, generic Title Case name (e.g. 'Vape Shop', 'Locksmith'). DO NOT use this if a category like 'Pharmacy', 'Home & Garden', 'Personal Care' already covers it. The app will create a new category from this string and reuse it next time."
                         ],
                         "account_hint": [
                             "type": "string",
@@ -173,7 +197,11 @@ struct AIService {
                                 "properties": [
                                     "description": ["type": "string"],
                                     "amount":      ["type": "number"],
-                                    "category":    ["type": "string", "enum": categoryEnum]
+                                    "category":    [
+                                        "type": "string",
+                                        "enum": categoryEnum,
+                                        "description": "Category for this single item. Omit if the whole receipt is one category — the draft's headline will cover it."
+                                    ]
                                 ],
                                 "required": ["description", "amount"]
                             ]
@@ -196,13 +224,28 @@ struct AIService {
     Report every distinct transaction via the `record_transactions` tool.
 
     CATEGORISATION RULES — IMPORTANT:
-    - Categorise PER LINE ITEM, not per receipt. A grocery shop that includes paracetamol \
-    has TWO categories: 'Groceries' and 'Health'.
-    - When a single receipt spans multiple categories, emit ONE DRAFT PER CATEGORY. Sum the \
-    line items in each category for that draft's `amount`, and only include the items \
-    relevant to that draft in its `line_items`. Set `note` to "Split from <payee> receipt".
-    - When everything on the receipt is one category, emit a single draft and put every \
-    item in `line_items` with the same `category`.
+    - ALWAYS prefer a value from the `suggested_category` enum. The list is comprehensive: \
+    Pharmacy, Personal Care, Home & Garden, Pets, Mobile Plan, Streaming, Electronics, \
+    Clothing, Childcare, Education, Charity, Insurance, Bank Fees, Taxes, etc. Look at \
+    every option before giving up.
+    - Worked examples — these merchants ALWAYS map to these existing categories:
+        Chemist Warehouse, Boots, CVS, Walgreens, LloydsPharmacy, McCabes Pharmacy → Pharmacy
+        Lenehans, Woodies, Home Depot, B&Q, IKEA, Topsoil, Garden Centre → Home & Garden
+        Tesco, Lidl, Aldi, SuperValu, Dunnes, Sainsbury's, Trader Joe's, Walmart → Groceries
+        Starbucks, Costa, Pret, Caffè Nero, Insomnia → Coffee
+        Vodafone, Three, EE, Verizon, AT&T (mobile bills) → Mobile Plan
+        Netflix, Spotify, Disney+, Apple TV+ → Streaming
+        Shell, BP, Circle K, Texaco, Esso (fuel) → Fuel
+        Specsavers, dentist visits, GP, doctor → Medical
+        H&M, Zara, Uniqlo, Penneys, Primark → Clothing
+    - Use `new_category` ONLY when none of the enum values come even close. Be conservative: \
+    if `Other Expense` is your fallback instinct, look at the list again first.
+    - Categorise PER LINE ITEM where it's meaningfully mixed. A grocery shop that includes \
+    paracetamol has TWO categories: 'Groceries' and 'Pharmacy'. Emit ONE DRAFT PER CATEGORY, \
+    sum the items in each. Set `note` to "Split from <payee> receipt" on each split.
+    - When everything on the receipt is one category, emit a single draft with that headline \
+    category. Don't bother stamping every line_item with the same category — leave them blank \
+    and the app fills them in from the headline.
 
     OTHER RULES:
     - `amount` is signed: negative = expense, positive = income.
@@ -212,6 +255,8 @@ struct AIService {
     'card' if you see a card brand or card-ending, 'unknown' otherwise.
     - If accounts are provided and you can tell which one paid (e.g. card ending matches), \
     set `account_hint` to that account's exact name.
+    - `payee` is the merchant's name as you'd say it in conversation. Strip noise: "TESCO \
+    DUBLIN 04 *MOBILE" → "Tesco". "CHEMIST WAREHOUSE STH KING ST" → "Chemist Warehouse".
     - Never invent a transaction. Set `confidence` low if anything is unclear.
     - Do not produce prose — only call the tool.
     """
@@ -736,6 +781,7 @@ struct AIService {
             payee: w.payee ?? "Unknown",
             note: w.note,
             suggestedCategory: w.suggested_category,
+            newCategory: w.new_category,
             accountHint: w.account_hint,
             paymentMethod: payment,
             lineItems: items,

@@ -9,11 +9,17 @@ struct ExtractedDraft: Identifiable, Codable, Hashable {
     var currency: String
     var payee: String
     var note: String?
-    var suggestedCategory: String?  // free-form name; mapped to a Category by the reviewer
-    var accountHint: String?        // free-form account name the AI thinks this belongs to
+    /// Category name the AI picked from the existing list. Preferred whenever any
+    /// existing category fits.
+    var suggestedCategory: String?
+    /// Set only when the AI determined NO existing category fits. The commit
+    /// pipeline will create a new TxCategory with this name unless it can
+    /// fuzzy-match an existing one.
+    var newCategory: String?
+    var accountHint: String?
     var paymentMethod: PaymentMethod = .unknown
     var lineItems: [LineItem]
-    var confidence: Double          // 0..1
+    var confidence: Double
 
     enum PaymentMethod: String, Codable, Hashable {
         case cash
@@ -37,6 +43,7 @@ struct ExtractedDraftWire: Codable {
     let payee: String?
     let note: String?
     let suggested_category: String?
+    let new_category: String?
     let account_hint: String?
     let payment_method: String?  // "cash" | "card" | "unknown"
     let line_items: [LineItemWire]?

@@ -46,25 +46,71 @@ final class TxCategory {
         set { kindRaw = newValue.rawValue }
     }
 
+    /// Default category catalogue. Grouped here for editorial sanity; flat at
+    /// runtime. The AI prompt is fed this same list so the model picks from
+    /// a controlled vocabulary instead of inventing one-off labels.
     static let defaults: [(String, CategoryKind, String)] = [
-        ("Groceries",      .expense, "🛒"),
-        ("Dining",         .expense, "🍔"),
-        ("Coffee",         .expense, "☕️"),
-        ("Transport",      .expense, "🚌"),
-        ("Fuel",           .expense, "⛽️"),
-        ("Rent",           .expense, "🏠"),
-        ("Utilities",      .expense, "💡"),
-        ("Subscriptions",  .expense, "🔁"),
-        ("Entertainment",  .expense, "🎬"),
-        ("Shopping",       .expense, "🛍️"),
-        ("Health",         .expense, "🩺"),
-        ("Travel",         .expense, "✈️"),
-        ("Other Expense",  .expense, "🧾"),
-        ("Salary",         .income,  "💼"),
-        ("Freelance",      .income,  "🧑‍💻"),
-        ("Refund",         .income,  "↩️"),
-        ("Gift",           .income,  "🎁"),
-        ("Interest",       .income,  "🏦"),
-        ("Other Income",   .income,  "💰")
+        // Food & drink
+        ("Groceries",          .expense, "🛒"),
+        ("Dining",             .expense, "🍔"),
+        ("Coffee",             .expense, "☕️"),
+        ("Alcohol",            .expense, "🍷"),
+
+        // Transport
+        ("Fuel",               .expense, "⛽️"),
+        ("Public Transport",   .expense, "🚌"),
+        ("Taxi & Ride-share",  .expense, "🚕"),
+        ("Parking",            .expense, "🅿️"),
+        ("Car Maintenance",    .expense, "🔧"),
+
+        // Recurring bills
+        ("Rent",               .expense, "🏠"),
+        ("Mortgage",           .expense, "🏘️"),
+        ("Electricity",        .expense, "⚡️"),
+        ("Heating & Gas",      .expense, "🔥"),
+        ("Water",              .expense, "💧"),
+        ("Internet",           .expense, "🌐"),
+        ("Mobile Plan",        .expense, "📱"),
+        ("Streaming",          .expense, "📺"),
+        ("Other Subscriptions",.expense, "🔁"),
+        ("Insurance",          .expense, "🛡️"),
+        ("Taxes",              .expense, "🧾"),
+        ("Bank Fees",          .expense, "🏦"),
+        ("Loan Payment",       .expense, "💸"),
+
+        // Health
+        ("Pharmacy",           .expense, "💊"),
+        ("Medical",            .expense, "🩺"),
+        ("Personal Care",      .expense, "💇"),
+
+        // Home & family
+        ("Home & Garden",      .expense, "🏡"),
+        ("Pets",               .expense, "🐾"),
+        ("Childcare",          .expense, "👶"),
+
+        // Lifestyle
+        ("Entertainment",      .expense, "🎬"),
+        ("Shopping",           .expense, "🛍️"),
+        ("Clothing",           .expense, "👕"),
+        ("Electronics",        .expense, "🔌"),
+        ("Books & Media",      .expense, "📚"),
+        ("Hobbies",            .expense, "🎨"),
+        ("Travel",             .expense, "✈️"),
+        ("Education",          .expense, "🎓"),
+        ("Charity",            .expense, "🤝"),
+        ("Gifts Given",        .expense, "🎀"),
+
+        // Catch-all
+        ("Cash Withdrawal",    .expense, "💵"),
+        ("Other Expense",      .expense, "🟫"),
+
+        // Income
+        ("Salary",             .income,  "💼"),
+        ("Freelance",          .income,  "🧑‍💻"),
+        ("Investment Returns", .income,  "📈"),
+        ("Refund",             .income,  "↩️"),
+        ("Gift Received",      .income,  "🎁"),
+        ("Interest",           .income,  "🏛️"),
+        ("Other Income",       .income,  "💰")
     ]
 }

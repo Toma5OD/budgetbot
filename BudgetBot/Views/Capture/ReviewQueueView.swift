@@ -181,7 +181,21 @@ struct ReviewQueueView: View {
             ?? accounts.first
             ?? autoCreateDefaultAccount(profileCurrency: job.defaultCurrency)
 
-        let cat = CaptureViewModel.matchCategory(for: draft, in: categories)
+        var workingCategories = categories
+        let cat = CaptureCategoryResolver.resolve(
+            draft: draft,
+            in: &workingCategories,
+            context: context
+        )
+
+        // Canonical merchant spelling, so duplicates collapse in analytics.
+        let allTxs = (try? context.fetch(FetchDescriptor<Transaction>())) ?? []
+        let canonicalPayee = PayeeNormaliser.canonical(
+            forKey: PayeeNormaliser.key(draft.payee),
+            in: allTxs.map(\.payee),
+            fallback: draft.payee
+        )
+
         let (snapRate, snapBase) = CaptureViewModel.snapshotFX(
             from: draft.currency,
             to: job.baseCurrency,
@@ -199,7 +213,7 @@ struct ReviewQueueView: View {
             date: draft.date,
             amount: draft.amount,
             currency: draft.currency,
-            payee: draft.payee,
+            payee: canonicalPayee,
             note: draft.note,
             confirmed: true,
             aiExtracted: true,
@@ -221,9 +235,13 @@ struct ReviewQueueView: View {
 
         if isMulticat && !draft.lineItems.isEmpty {
             for li in draft.lineItems {
-                let liCat = li.category.flatMap { name in
-                    categories.first { $0.name.lowercased() == name.lowercased() }
-                } ?? cat
+                // Inherit headline category when AI left this item blank.
+                let liCat: TxCategory? = {
+                    if let name = li.category {
+                        return workingCategories.first { $0.name.lowercased() == name.lowercased() }
+                    }
+                    return cat
+                }()
                 let signed = draft.amount < 0 ? -abs(li.amount) : abs(li.amount)
                 let split = Split(
                     description: li.description,

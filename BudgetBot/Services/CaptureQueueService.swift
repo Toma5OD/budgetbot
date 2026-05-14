@@ -168,11 +168,11 @@ final class CaptureQueueService {
 
     private func commitDrafts(job: CaptureJob, drafts: [ExtractedDraft], accounts: [Account]) {
         let ctx = container.mainContext
-        let categories = (try? ctx.fetch(FetchDescriptor<TxCategory>())) ?? []
+        var categories = (try? ctx.fetch(FetchDescriptor<TxCategory>())) ?? []
+        let existingPayees = ((try? ctx.fetch(FetchDescriptor<Transaction>())) ?? []).map(\.payee)
         var resolvedAccounts = accounts
         var defaultAccount = resolvedAccounts.first { $0.id == job.defaultAccountID } ?? resolvedAccounts.first
 
-        // YOLO with no accounts yet: spin up a Wallet so the row lands.
         if defaultAccount == nil {
             let wallet = Account(
                 name: "Wallet",
@@ -189,10 +189,22 @@ final class CaptureQueueService {
         let firstInput = (job.inputs ?? []).first
 
         for (idx, draft) in drafts.enumerated() {
-            let cat = CaptureViewModel.matchCategory(for: draft, in: categories)
+            // Resolve category — fuzzy match existing, OR create new from AI's
+            // proposal if no match. Returns nil only when AI gave nothing.
+            let cat = CaptureCategoryResolver.resolve(
+                draft: draft,
+                in: &categories,
+                context: ctx
+            )
             let acc = CaptureViewModel.matchAccount(for: draft, in: resolvedAccounts) ?? defaultAccount
 
-            // FX snapshot
+            // Canonicalise the merchant name so duplicates collapse.
+            let canonicalPayee = PayeeNormaliser.canonical(
+                forKey: PayeeNormaliser.key(draft.payee),
+                in: existingPayees,
+                fallback: draft.payee
+            )
+
             let (snapRate, snapBase) = CaptureViewModel.snapshotFX(
                 from: draft.currency,
                 to: job.baseCurrency,
@@ -204,7 +216,7 @@ final class CaptureQueueService {
                 date: draft.date,
                 amount: draft.amount,
                 currency: draft.currency,
-                payee: draft.payee,
+                payee: canonicalPayee,
                 note: draft.note,
                 confirmed: true,
                 aiExtracted: true,
@@ -212,23 +224,30 @@ final class CaptureQueueService {
                 fxRateToBase: snapRate,
                 fxBaseCurrency: snapBase,
                 account: acc,
-                category: idx == 0 ? cat : nil,
+                category: cat,
                 attachment: idx == 0 ? firstInput : nil,
                 createdAt: .now
             )
             ctx.insert(tx)
 
-            // Splits for multi-category receipts
-            let lineCategoryNames = Set(draft.lineItems.compactMap { $0.category?.lowercased() })
+            // Multi-category split: only when AI tagged items with categories
+            // that actually disagree with the headline.
+            let liCats = Set(draft.lineItems.compactMap { $0.category?.lowercased() })
             let headlineName = cat?.name.lowercased()
-            let isMulticat = lineCategoryNames.count > 1
-                || (lineCategoryNames.count == 1 && lineCategoryNames.first != headlineName)
+            let isMulticat = liCats.count > 1
+                || (liCats.count == 1 && liCats.first != headlineName)
 
             if isMulticat && !draft.lineItems.isEmpty {
                 for li in draft.lineItems {
-                    let liCat = li.category.flatMap { name in
-                        categories.first { $0.name.lowercased() == name.lowercased() }
-                    } ?? cat
+                    // Splits inherit the headline category when the AI left
+                    // their per-item category blank — fixes the "Uncategorised"
+                    // bug we saw on the Chemist Warehouse receipts.
+                    let liCat: TxCategory? = {
+                        if let name = li.category {
+                            return categories.first { $0.name.lowercased() == name.lowercased() }
+                        }
+                        return cat
+                    }()
                     let signed = draft.amount < 0 ? -abs(li.amount) : abs(li.amount)
                     let split = Split(
                         description: li.description,
@@ -241,8 +260,6 @@ final class CaptureQueueService {
                 tx.category = nil
             }
         }
-        // The first attachment migrated to the first Transaction above;
-        // detach the rest from the job so they're not left dangling.
         if let firstInput {
             firstInput.captureJob = nil
         }
