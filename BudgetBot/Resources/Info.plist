@@ -26,6 +26,10 @@
 	<string>BudgetBot uses the camera to scan receipts, invoices and bills so the AI can extract the data.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>BudgetBot reads photos you pick so the AI can extract transaction data from them.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

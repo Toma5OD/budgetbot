@@ -16,6 +16,8 @@ struct SettingsView: View {
     @State private var showAppleRevokeSheet = false
     @State private var showLoadDemoConfirm = false
     @State private var isLoadingDemo = false
+    @State private var cloudKitToggle = PersistenceController.isCloudKitSyncEnabled
+    @State private var showCloudKitRestartHint = false
     @State private var savedToast: String?
 
     static let availableModels: [(String, String)] = [
@@ -214,6 +216,23 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings.themeLink")
                 }
 
+                section("Storage") {
+                    SettingsRow("Sync to iCloud",
+                                subtitle: cloudKitToggle
+                                    ? "On — restart required after toggling"
+                                    : "Off — data stays on this device",
+                                icon: "icloud.fill",
+                                tint: .blue) {
+                        Toggle("", isOn: $cloudKitToggle)
+                            .labelsHidden()
+                            .onChange(of: cloudKitToggle) { _, new in
+                                PersistenceController.setCloudKitSyncEnabled(new)
+                                showCloudKitRestartHint = true
+                            }
+                    }
+                    .accessibilityIdentifier("settings.cloudKitSync")
+                }
+
                 section("Privacy") {
                     Link(destination: URL(string: "https://example.com/budgetbot/privacy")!) {
                         SettingsRow("Privacy policy",
@@ -326,6 +345,11 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showAppleRevokeSheet) {
             AppleRevokeInstructionsSheet()
+        }
+        .alert("Restart BudgetBot to apply", isPresented: $showCloudKitRestartHint) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("iCloud sync \(cloudKitToggle ? "will start" : "will stop") on next launch. If iCloud sync stays disabled in dev, also make sure the container `iCloud.dev.toma5od.BudgetBot` exists in Xcode → Signing & Capabilities → iCloud.")
         }
     }
 

@@ -26,6 +26,23 @@ enum BudgetBotMigrationPlan: SchemaMigrationPlan {
 enum PersistenceController {
     private static let storeFilename = "BudgetBotStore.store"
 
+    /// UserDefaults key controlling whether SwiftData mirrors to CloudKit.
+    /// Lives in UserDefaults (not the database) so it can be consulted
+    /// *before* the store opens. Default is OFF for pre-1.0 — most dev
+    /// builds either run without the iCloud container provisioned in the
+    /// CloudKit Dashboard (CKError 15/2000) or wipe the store often
+    /// enough that sync is just log noise. Users can flip it on in
+    /// Settings → Money → "Sync to iCloud" once the container is set up.
+    static let cloudKitEnabledDefaultsKey = "BudgetBot.cloudKitSyncEnabled"
+
+    static var isCloudKitSyncEnabled: Bool {
+        UserDefaults.standard.bool(forKey: cloudKitEnabledDefaultsKey)
+    }
+
+    static func setCloudKitSyncEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: cloudKitEnabledDefaultsKey)
+    }
+
     /// Where the SwiftData store actually lives. We pin it explicitly to the
     /// app's own `Library/Application Support` rather than letting SwiftData
     /// route into the App Group container (which it does by default once the
@@ -91,17 +108,18 @@ enum PersistenceController {
             )
         } else if let url = storeURL {
             // Pin the URL so SwiftData can't reroute into the App Group
-            // container. `.automatic` enables CloudKit private-database sync
-            // when the iCloud entitlement is registered with the team AND the
-            // user is signed into iCloud on the device. Falls back to
-            // local-only otherwise — Sim users without iCloud just see a
-            // single-device app.
+            // container. CloudKit is opt-in via the user-facing setting in
+            // `isCloudKitSyncEnabled` — when off, we pass `.none` so
+            // SwiftData skips CKContainer setup entirely (silences the
+            // "Server Rejected Request" zone-creation noise dev builds hit
+            // before the iCloud container has been provisioned in the
+            // CloudKit Dashboard).
             config = ModelConfiguration(
                 "BudgetBotStore",
                 schema: schema,
                 url: url,
                 allowsSave: true,
-                cloudKitDatabase: .automatic
+                cloudKitDatabase: isCloudKitSyncEnabled ? .automatic : .none
             )
         } else {
             config = ModelConfiguration(
@@ -109,7 +127,7 @@ enum PersistenceController {
                 schema: schema,
                 isStoredInMemoryOnly: false,
                 allowsSave: true,
-                cloudKitDatabase: .automatic
+                cloudKitDatabase: isCloudKitSyncEnabled ? .automatic : .none
             )
         }
         return try ModelContainer(
