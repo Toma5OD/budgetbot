@@ -35,6 +35,11 @@ struct AnalyticsView: View {
     @State private var expandedMerchant: String?
     @State private var expandedDay: Date?
 
+    /// Per-category cut percentages driven by the Cut & Save sliders.
+    /// Lives in the view because it's purely interactive — nothing is
+    /// persisted; the savings number ticks live as the slider moves.
+    @State private var cutPercents: [String: Double] = [:]
+
     enum Range: String, CaseIterable, Identifiable {
         case week = "Week", month = "Month", quarter = "Quarter", year = "Year", custom = "Custom"
         var id: String { rawValue }
@@ -58,6 +63,8 @@ struct AnalyticsView: View {
                     rangePicker
                     heroCard
                     summaryRow
+                    streakChip
+                    forecastCard
                     if let budget = profiles.first?.monthlyBudget, budget > 0, range == .month {
                         budgetCard(budget: budget)
                     }
@@ -65,6 +72,8 @@ struct AnalyticsView: View {
                     flowChart
                     if regretSummary.count > 0 { dickheadSection }
                     categoryBreakdown
+                    spinWheelSection
+                    cutAndSaveSection
                     valueForMoneySection
                     topMerchants
                     viceTrackerSection
@@ -261,8 +270,14 @@ struct AnalyticsView: View {
                         y: .value("Amount",
                                   appearAnimation ? NSDecimalNumber(decimal: d.expense).doubleValue : 0)
                     )
-                    .foregroundStyle(theme.current.expenseColor.opacity(0.85))
-                    .cornerRadius(4)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [palette[d.paletteIndex % palette.count],
+                                     palette[d.paletteIndex % palette.count].opacity(0.55)],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+                    .cornerRadius(6)
                 }
                 .frame(height: 200)
                 .animation(.spring(response: 0.7, dampingFraction: 0.85), value: appearAnimation)
@@ -810,8 +825,14 @@ struct AnalyticsView: View {
                         y: .value("Amount",
                                   appearAnimation ? NSDecimalNumber(decimal: d.amount).doubleValue : 0)
                     )
-                    .foregroundStyle(theme.current.tint.opacity(0.85))
-                    .cornerRadius(4)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [palette[(d.weekday - 1) % palette.count],
+                                     palette[(d.weekday - 1) % palette.count].opacity(0.55)],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+                    .cornerRadius(6)
                 }
                 .frame(height: 150)
                 .animation(.spring(response: 0.7, dampingFraction: 0.85), value: appearAnimation)
@@ -1065,6 +1086,197 @@ struct AnalyticsView: View {
         .themedCard()
     }
 
+    // MARK: - Streak chip
+
+    /// Days in the range under the daily average. Cheap motivator —
+    /// shown as a flame chip so it feels like a Duolingo streak.
+    private var streakChip: some View {
+        let avg = dailyAverage
+        let goodDays = byDay.filter { $0.expense > 0 && $0.expense <= avg }.count
+        let totalDaysWithSpend = byDay.filter { $0.expense > 0 }.count
+        let pct: Double = totalDaysWithSpend == 0 ? 0
+            : Double(goodDays) / Double(totalDaysWithSpend)
+        let visible = totalDaysWithSpend >= 5
+        return Group {
+            if visible {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(
+                                colors: [.orange, .red.opacity(0.85)],
+                                startPoint: .top, endPoint: .bottom))
+                            .frame(width: 44, height: 44)
+                        Text("🔥").font(.title2)
+                    }
+                    .breathingPulse(amplitude: 0.04, period: 2.4)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            AnimatedInt(target: goodDays,
+                                        font: .title3.bold().monospacedDigit())
+                            Text("/ \(totalDaysWithSpend) days under avg")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                        Text("\(Int((pct * 100).rounded()))% of spending days were chilled out")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                }
+                .padding(14)
+                .themedCard()
+            }
+        }
+    }
+
+    // MARK: - Forecast
+
+    /// Projects end-of-month spend at the current run-rate. Only shows
+    /// when range == .month so the linear projection makes sense.
+    @ViewBuilder
+    private var forecastCard: some View {
+        if range == .month {
+            let cal = Calendar.current
+            let now = Date()
+            let daysSoFar = max(1, cal.component(.day, from: now))
+            let daysInMonth = cal.range(of: .day, in: .month, for: now)?.count ?? 30
+            let perDay = expense / Decimal(daysSoFar)
+            let projected = perDay * Decimal(daysInMonth)
+            let budget = profiles.first?.monthlyBudget ?? 0
+            let overBudget = budget > 0 && projected > budget
+
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle().stroke(Color.gray.opacity(0.18), lineWidth: 6)
+                    Circle()
+                        .trim(from: 0, to: appearAnimation ? min(Double(daysSoFar)/Double(daysInMonth), 1) : 0)
+                        .stroke(
+                            LinearGradient(colors: [theme.current.tint, theme.current.tint.opacity(0.55)],
+                                           startPoint: .top, endPoint: .bottom),
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .animation(.spring(response: 1.0, dampingFraction: 0.85), value: appearAnimation)
+                    Text("\(daysSoFar)/\(daysInMonth)")
+                        .font(.caption2.bold().monospacedDigit())
+                }
+                .frame(width: 48, height: 48)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Month-end forecast")
+                        .font(.caption.bold())
+                        .tracking(0.5)
+                        .foregroundStyle(.secondary)
+                    AnimatedDecimal(
+                        target: projected, currency: base,
+                        font: .title2.bold().monospacedDigit(),
+                        color: overBudget ? theme.current.expenseColor : .primary
+                    )
+                    if budget > 0 {
+                        Text(overBudget
+                             ? "≈ \(CurrencyFormatter.string(for: projected - budget, currency: base)) over budget"
+                             : "≈ \(CurrencyFormatter.string(for: budget - projected, currency: base)) under budget")
+                            .font(.caption2)
+                            .foregroundStyle(overBudget ? theme.current.expenseColor : theme.current.incomeColor)
+                    } else {
+                        Text("at current run-rate")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+            }
+            .padding(14)
+            .themedCard()
+        }
+    }
+
+    // MARK: - Spin Wheel
+
+    private var spinWheelSection: some View {
+        let palette = theme.current.chartPalette
+        let wedges: [SpinTheBudgetWheel.Wedge] = byCategory.enumerated().map { idx, c in
+            SpinTheBudgetWheel.Wedge(
+                label: c.name,
+                amount: c.amount,
+                color: palette[idx % palette.count]
+            )
+        }
+        return SpinTheBudgetWheel(wedges: wedges, currency: base, theme: theme.current)
+    }
+
+    // MARK: - Cut & Save
+
+    /// Interactive sliders: drag to hypothetically cut a category by X%
+    /// and watch a running total tick up live. Pure fun-with-numbers,
+    /// no persistence.
+    private var cutAndSaveSection: some View {
+        let top = Array(byCategory.prefix(5))
+        let savings: Decimal = top.reduce(Decimal(0)) { acc, c in
+            let pct = cutPercents[c.name] ?? 0
+            return acc + (c.amount * Decimal(pct / 100))
+        }
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Cut & save").font(.headline)
+                Spacer()
+                if savings > 0 {
+                    Text("save")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    AnimatedDecimal(
+                        target: savings, currency: base,
+                        font: .title3.bold().monospacedDigit(),
+                        color: theme.current.incomeColor,
+                        duration: 0.5
+                    )
+                }
+            }
+            if top.isEmpty {
+                EmptyState(text: "Capture a few receipts first — sliders need categories to play with.")
+            } else {
+                VStack(spacing: 14) {
+                    ForEach(top) { c in
+                        cutRow(c)
+                    }
+                }
+                if savings > 0 {
+                    Text("Hypothetical. We're not actually cancelling Netflix — yet.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(16)
+        .themedCard()
+    }
+
+    @ViewBuilder
+    private func cutRow(_ c: CatTotal) -> some View {
+        let pct = cutPercents[c.name] ?? 0
+        let saved = c.amount * Decimal(pct / 100)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Circle().fill(colorFor(c)).frame(width: 8, height: 8)
+                Text(c.name).font(.callout)
+                Spacer()
+                Text("\(Int(pct.rounded()))%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Text("→ \(CurrencyFormatter.string(for: saved, currency: base))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(theme.current.incomeColor)
+            }
+            Slider(
+                value: Binding(
+                    get: { cutPercents[c.name] ?? 0 },
+                    set: { new in cutPercents[c.name] = new }
+                ),
+                in: 0...100, step: 5
+            )
+            .tint(colorFor(c))
+        }
+    }
+
     // MARK: - Aggregations
 
     private func bounds() -> (Date, Date) {
@@ -1118,7 +1330,14 @@ struct AnalyticsView: View {
 
     // MARK: - Computed series
 
-    struct Daily: Identifiable { let id = UUID(); let date: Date; let expense: Decimal }
+    struct Daily: Identifiable {
+        let id = UUID()
+        let date: Date
+        let expense: Decimal
+        /// Stable index into the chart palette so each bar reads as a
+        /// different colour and the chart doesn't look monochrome.
+        let paletteIndex: Int
+    }
     struct CatTotal: Identifiable, Hashable {
         let id = UUID(); let name: String; let amount: Decimal
     }
@@ -1133,11 +1352,15 @@ struct AnalyticsView: View {
         let cal = Calendar.current
         let txs = inRange.filter { $0.amount < 0 }
         let groups = Dictionary(grouping: txs) { cal.startOfDay(for: $0.date) }
-        return groups
-            .map { Daily(date: $0.key, expense: $0.value.reduce(Decimal(0)) { acc, tx in
+        let unsorted = groups.map { (key: Date, value: [Transaction]) -> (Date, Decimal) in
+            let total = value.reduce(Decimal(0)) { acc, tx in
                 acc + -tx.amountInBase(base, liveConvert: convert)
-            }) }
-            .sorted { $0.date < $1.date }
+            }
+            return (key, total)
+        }.sorted { $0.0 < $1.0 }
+        return unsorted.enumerated().map { idx, pair in
+            Daily(date: pair.0, expense: pair.1, paletteIndex: idx)
+        }
     }
 
     private var byCategory: [CatTotal] {
