@@ -11,6 +11,7 @@ struct NotificationCenterView: View {
     @Environment(NotificationStore.self) private var store
     @Environment(FXService.self) private var fx
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
+    @State private var showReviewQueue = false
 
     var body: some View {
         NavigationStack {
@@ -41,6 +42,9 @@ struct NotificationCenterView: View {
                 rebuild()
                 store.markAllRead()
             }
+            .sheet(isPresented: $showReviewQueue) {
+                ReviewQueueView()
+            }
         }
     }
 
@@ -62,8 +66,9 @@ struct NotificationCenterView: View {
     private func handle(_ item: AppNotification) {
         switch item.kind {
         case .pendingCapture:
-            // The Home/Capture tab handles ingest on appear; just dismiss.
             dismiss()
+        case .awaitingReview:
+            showReviewQueue = true
         case .subscriptionDetected, .budgetThreshold:
             dismiss()
         case .aiRecommendation(let id):
@@ -128,6 +133,7 @@ private struct NotificationRow: View {
     private func tint(for kind: AppNotification.Kind) -> Color {
         switch kind {
         case .pendingCapture:        .blue
+        case .awaitingReview:        theme.tint
         case .subscriptionDetected:  .purple
         case .budgetThreshold:       .orange
         case .aiRecommendation:      theme.incomeColor

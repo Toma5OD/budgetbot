@@ -3,58 +3,60 @@ import SwiftData
 import PhotosUI
 import UniformTypeIdentifiers
 
+/// Capture flow. The user adds attachments + an optional note, taps a single
+/// "Process in background" CTA, the batch is persisted as a `CaptureJob`, and
+/// the queue service handles AI extraction off-screen. The screen clears
+/// immediately so the user can queue another batch.
 struct CaptureView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase)   private var scenePhase
     @Environment(FXService.self) private var fx
+    @Environment(CaptureQueueService.self) private var queue
 
     @Query(filter: #Predicate<Account> { !$0.archived }, sort: \Account.createdAt)
     private var accounts: [Account]
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
-    @Query(filter: #Predicate<Transaction> { $0.confirmed }, sort: \Transaction.date, order: .reverse)
-    private var existing: [Transaction]
 
     @State private var vm = CaptureViewModel()
     @State private var showScanner = false
     @State private var showCamera = false
     @State private var showPDFImporter = false
     @State private var photoSelection: [PhotosPickerItem] = []
+    @State private var justQueued = false
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                switch vm.stage {
-                case .idle, .error:
-                    inputContent
-                case .extracting:
-                    extractingView
-                case .review(let drafts, let dupes):
-                    ReviewExtractionView(
-                        drafts: drafts,
-                        duplicates: dupes,
-                        accounts: accounts,
-                        onConfirm: { confirmed, defaultAccount in
-                            let cats = (try? context.fetch(FetchDescriptor<TxCategory>())) ?? []
-                            let base = profiles.first?.baseCurrency ?? profiles.first?.defaultCurrency ?? "USD"
-                            vm.commit(
-                                drafts: confirmed,
-                                defaultAccount: defaultAccount,
-                                accounts: accounts,
-                                categories: cats,
-                                baseCurrency: base,
-                                fxRates: fx.rates,
-                                in: context
-                            )
-                        },
-                        onCancel: { vm.reset() }
-                    )
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if queue.processingCount > 0 || queue.queuedCount > 0 || queue.awaitingReviewCount > 0 {
+                        statusPill
+                    }
+                    intro
+                    actionTiles
+
+                    if !vm.images.isEmpty { photosSection }
+                    if !vm.pdfs.isEmpty   { pdfsSection }
+                    notesSection
+
+                    if let err = vm.lastError {
+                        Label(err, systemImage: "exclamationmark.circle.fill")
+                            .font(.callout).foregroundStyle(.red)
+                            .padding(.horizontal, 16)
+                    }
+
+                    submitBar
                 }
+                .padding(.vertical, 12)
             }
+            .scrollContentBackground(.hidden)
             .navigationTitle("Capture")
             .appHeaderToolbar()
             .onAppear { hydrate() }
             .onChange(of: scenePhase) { _, new in
-                if new == .active { vm.ingestPending() }
+                if new == .active {
+                    vm.ingestPending()
+                    queue.pump()
+                }
             }
             .sheet(isPresented: $showScanner) {
                 DocumentScannerView(onScan: { imgs in vm.images.append(contentsOf: imgs) })
@@ -92,136 +94,170 @@ struct CaptureView: View {
         }
     }
 
-    private func hydrate() {
-        vm.defaultCurrency = profiles.first?.defaultCurrency ?? "USD"
-        vm.aiModel = profiles.first?.aiModel ?? AIService.defaultModel
-        vm.ingestPending()
-    }
+    // MARK: - Sub-sections
 
-    private var extractingView: some View {
-        VStack(spacing: 16) {
-            ProgressView().controlSize(.large)
-            Text("Asking the AI…").foregroundStyle(.secondary)
-            Button("Cancel", role: .cancel) { vm.cancel() }
-                .buttonStyle(.bordered)
-                .padding(.top, 8)
-        }
-    }
-
-    private var inputContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Snap, scan, attach a PDF, or just type what happened — the AI will turn it into transactions you can review.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHint("Use the buttons below to add receipts, photos, PDFs or text")
-
-                actionTiles
-
-                if !vm.images.isEmpty {
-                    sectionLabel("Photos (\(vm.images.count))")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(Array(vm.images.enumerated()), id: \.offset) { idx, img in
-                                ZStack(alignment: .topTrailing) {
-                                    Image(uiImage: img)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 120, height: 160)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        .accessibilityLabel("Photo \(idx + 1) of \(vm.images.count)")
-                                    Button {
-                                        vm.images.remove(at: idx)
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.title3)
-                                            .padding(6)
-                                            .foregroundStyle(.white, .black.opacity(0.6))
-                                    }
-                                    .accessibilityLabel("Remove photo \(idx + 1)")
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !vm.pdfs.isEmpty {
-                    sectionLabel("PDFs (\(vm.pdfs.count))")
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(vm.pdfs.enumerated()), id: \.offset) { idx, item in
-                            HStack {
-                                Image(systemName: "doc.richtext.fill").foregroundStyle(.tint)
-                                Text(item.1).lineLimit(1)
-                                Spacer()
-                                Button {
-                                    vm.pdfs.remove(at: idx)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                                }
-                                .accessibilityLabel("Remove \(item.1)")
-                            }
-                            .padding(12)
-                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                        }
-                    }
-                }
-
-                sectionLabel("Or describe it")
-                TextEditor(text: $vm.textNote)
-                    .frame(minHeight: 100)
-                    .padding(8)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                    .accessibilityLabel("Description of the transaction")
-
-                if case .error(let msg) = vm.stage {
-                    Text(msg)
-                        .font(.callout)
-                        .foregroundStyle(.red)
-                        .accessibilityLabel("Error: \(msg)")
-                }
-
-                Button {
-                    Task {
-                        await vm.extract(accounts: accounts, existing: existing)
-                    }
-                } label: {
-                    Text("Extract with AI")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!vm.hasInput)
-                .accessibilityHint("Sends your attachments and notes to the AI for parsing")
-
-                if vm.hasInput {
-                    Button(role: .destructive) {
-                        vm.reset()
-                    } label: {
-                        Text("Clear").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                }
+    private var statusPill: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bolt.horizontal.circle.fill")
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(pillTitle).font(.subheadline.bold())
+                Text(pillSubtitle).font(.caption).foregroundStyle(.secondary)
             }
-            .padding()
+            Spacer()
+            if queue.processingCount > 0 {
+                ProgressView()
+            }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .themedCard()
+        .padding(.horizontal, 16)
+    }
+
+    private var pillTitle: String {
+        let parts = [
+            queue.processingCount > 0 ? "\(queue.processingCount) processing"     : nil,
+            queue.queuedCount     > 0 ? "\(queue.queuedCount) queued"             : nil,
+            queue.awaitingReviewCount > 0 ? "\(queue.awaitingReviewCount) ready to review" : nil
+        ].compactMap { $0 }
+        return parts.isEmpty ? "Idle" : parts.joined(separator: " · ")
+    }
+
+    private var pillSubtitle: String {
+        if queue.awaitingReviewCount > 0 {
+            return "Open Notifications when you're done capturing."
+        }
+        if queue.processingCount > 0 || queue.queuedCount > 0 {
+            return "Keep going — the bot's reading these in the background."
+        }
+        return ""
+    }
+
+    private var intro: some View {
+        Text(vm.yoloMode
+             ? "YOLO mode is on — the AI will auto-save what it finds. Toggle in Settings."
+             : "Snap, scan, attach PDFs or describe what happened. The bot processes in the background; you'll review each batch in Notifications when it's done.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
     }
 
     private var actionTiles: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             tile(title: "Scan Receipt", icon: "doc.viewfinder.fill") { showScanner = true }
-            tile(title: "Camera", icon: "camera.fill") { showCamera = true }
+            tile(title: "Camera",       icon: "camera.fill")          { showCamera = true }
             PhotosPicker(selection: $photoSelection, matching: .images, photoLibrary: .shared()) {
                 tileLabel(title: "Photos", icon: "photo.on.rectangle.angled")
             }
             .accessibilityLabel("Pick photos from your library")
-            tile(title: "Add PDF", icon: "doc.fill") { showPDFImporter = true }
+            tile(title: "Add PDF",      icon: "doc.fill")             { showPDFImporter = true }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var photosSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "Photos · \(vm.images.count)")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Array(vm.images.enumerated()), id: \.offset) { idx, img in
+                        ZStack(alignment: .topTrailing) {
+                            Image(uiImage: img)
+                                .resizable().scaledToFill()
+                                .frame(width: 120, height: 160)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            Button {
+                                vm.images.remove(at: idx)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.white, .black.opacity(0.6))
+                                    .padding(6)
+                            }
+                            .accessibilityLabel("Remove photo \(idx + 1)")
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    private var pdfsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "PDFs · \(vm.pdfs.count)")
+            VStack(spacing: 8) {
+                ForEach(Array(vm.pdfs.enumerated()), id: \.offset) { idx, item in
+                    HStack {
+                        Image(systemName: "doc.richtext.fill").foregroundStyle(.tint)
+                        Text(item.1).lineLimit(1)
+                        Spacer()
+                        Button {
+                            vm.pdfs.remove(at: idx)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .accessibilityLabel("Remove \(item.1)")
+                    }
+                    .padding(12)
+                    .themedCard()
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "Note (optional)")
+            TextEditor(text: $vm.textNote)
+                .frame(minHeight: 90)
+                .padding(8)
+                .themedCard()
+                .padding(.horizontal, 16)
         }
     }
 
     @ViewBuilder
+    private var submitBar: some View {
+        VStack(spacing: 10) {
+            Button {
+                vm.queueForProcessing(in: context) { queue.pump() }
+                justQueued = true
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_400_000_000)
+                    justQueued = false
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: justQueued ? "checkmark.circle.fill" : "paperplane.circle.fill")
+                        .font(.title3)
+                    Text(justQueued ? "Queued!" : (vm.yoloMode ? "Process in background (YOLO)" : "Process in background"))
+                        .font(.callout.bold())
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(!vm.hasInput)
+
+            if vm.hasInput {
+                Button(role: .destructive) {
+                    vm.reset()
+                } label: {
+                    Text("Clear").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
     private func tile(title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { tileLabel(title: title, icon: icon) }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .accessibilityLabel(title)
     }
 
@@ -236,7 +272,14 @@ struct CaptureView: View {
         .foregroundStyle(.tint)
     }
 
-    private func sectionLabel(_ s: String) -> some View {
-        Text(s).font(.subheadline.bold()).foregroundStyle(.secondary)
+    private func hydrate() {
+        let p = profiles.first
+        vm.defaultCurrency = p?.defaultCurrency ?? Currencies.localeDefault
+        vm.baseCurrency = p?.baseCurrency ?? Currencies.localeDefault
+        vm.aiModel = p?.aiModel ?? AIService.defaultModel
+        vm.yoloMode = p?.yoloMode ?? false
+        vm.defaultAccountID = accounts.first?.id
+        vm.ingestPending()
+        queue.pump()
     }
 }

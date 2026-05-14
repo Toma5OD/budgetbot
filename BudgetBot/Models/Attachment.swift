@@ -20,6 +20,11 @@ final class Attachment {
     @Relationship(inverse: \Transaction.attachment)
     var transaction: Transaction?
 
+    /// Set while the attachment is part of a queued CaptureJob. Reassigned
+    /// (or nil-ed out) when the job is committed and the produced Transaction
+    /// inherits the attachment.
+    @Relationship var captureJob: CaptureJob?
+
     init(
         id: UUID = UUID(),
         kind: AttachmentKind,

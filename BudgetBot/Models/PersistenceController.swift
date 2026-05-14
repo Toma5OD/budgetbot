@@ -13,7 +13,8 @@ enum SchemaV1: VersionedSchema {
         Attachment.self,
         AIRecommendation.self,
         FXRateSnapshot.self,
-        RecurringRule.self
+        RecurringRule.self,
+        CaptureJob.self
     ]
 }
 

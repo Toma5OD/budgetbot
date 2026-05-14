@@ -16,6 +16,10 @@ final class UserProfile {
     /// Which OAuth provider the user originally signed in with.
     /// Values: "apple", "google". Defaults to apple for legacy rows.
     var authProvider: String = "apple"
+    /// YOLO mode: auto-commit AI-extracted drafts without per-batch review.
+    /// Off by default — surfaces each batch in the notification center for
+    /// the user to confirm.
+    var yoloMode: Bool = false
     var createdAt: Date = Date.now
 
     init(
@@ -28,6 +32,7 @@ final class UserProfile {
         monthlyBudget: Decimal? = nil,
         aiModel: String = AIService.defaultModel,
         authProvider: String = "apple",
+        yoloMode: Bool = false,
         createdAt: Date = .now
     ) {
         self.id = id
@@ -39,6 +44,7 @@ final class UserProfile {
         self.monthlyBudget = monthlyBudget
         self.aiModel = aiModel
         self.authProvider = authProvider
+        self.yoloMode = yoloMode
         self.createdAt = createdAt
     }
 }

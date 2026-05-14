@@ -133,6 +133,23 @@ struct SettingsView: View {
 
                     RowDivider()
 
+                    SettingsRow("YOLO mode",
+                                subtitle: "Auto-accept everything the AI extracts",
+                                icon: "bolt.fill",
+                                tint: .yellow) {
+                        Toggle("", isOn: Binding(
+                            get: { profiles.first?.yoloMode ?? false },
+                            set: {
+                                profiles.first?.yoloMode = $0
+                                try? context.save()
+                            }
+                        ))
+                        .labelsHidden()
+                    }
+                    .accessibilityIdentifier("settings.yolo")
+
+                    RowDivider()
+
                     NavigationLink {
                         APIKeyManagerView(savedToast: $savedToast,
                                           showRemoveConfirm: $showRemoveKeyConfirm)

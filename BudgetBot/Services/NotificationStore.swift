@@ -14,6 +14,7 @@ struct AppNotification: Identifiable, Hashable {
 
     enum Kind: Hashable {
         case pendingCapture(count: Int)
+        case awaitingReview(count: Int)
         case subscriptionDetected(payee: String)
         case budgetThreshold(percent: Int)
         case aiRecommendation(id: UUID)
@@ -21,6 +22,7 @@ struct AppNotification: Identifiable, Hashable {
         var tintName: String {
             switch self {
             case .pendingCapture:        "blue"
+            case .awaitingReview:        "tint"
             case .subscriptionDetected:  "purple"
             case .budgetThreshold:       "orange"
             case .aiRecommendation:      "green"
@@ -68,6 +70,25 @@ final class NotificationStore {
                 body: "Shared from another app. Tap Capture to import.",
                 icon: "tray.and.arrow.down.fill",
                 kind: .pendingCapture(count: pending.count)
+            ))
+        }
+
+        // 1b) CaptureJobs awaiting review (post-AI processing)
+        let awaitingDesc = FetchDescriptor<CaptureJob>(
+            predicate: #Predicate<CaptureJob> { $0.statusRaw == "awaitingReview" },
+            sortBy: [SortDescriptor(\.completedAt, order: .reverse)]
+        )
+        let awaiting = (try? context.fetch(awaitingDesc)) ?? []
+        if !awaiting.isEmpty {
+            let totalDrafts = awaiting.reduce(0) { $0 + $1.drafts.count }
+            let latest = awaiting.first?.completedAt ?? .now
+            out.append(AppNotification(
+                id: "review.\(awaiting.count).\(totalDrafts)",
+                date: latest,
+                title: "\(totalDrafts) transaction\(totalDrafts == 1 ? "" : "s") ready to review",
+                body: "The AI finished processing \(awaiting.count) batch\(awaiting.count == 1 ? "" : "es"). Tap to confirm one by one.",
+                icon: "checkmark.bubble.fill",
+                kind: .awaitingReview(count: totalDrafts)
             ))
         }
 
