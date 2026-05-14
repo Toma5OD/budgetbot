@@ -29,6 +29,13 @@ final class Transaction {
 
     var recurringRuleID: UUID?
 
+    /// Stable id supplied by an external source (bank-sync aggregator like
+    /// GoCardless). Used to dedup repeated pulls — if the importer sees a
+    /// row with the same external id it updates the existing Transaction
+    /// instead of inserting a new one. `nil` for manually-captured /
+    /// AI-extracted transactions.
+    var externalID: String?
+
     /// User-flagged "Hall of Shame" purchase — drives the Regrets screen.
     /// All three fields default so the SwiftData/CloudKit schema migrates
     /// transparently for users on older builds.
@@ -72,6 +79,7 @@ final class Transaction {
         fxRateToBase: Decimal? = nil,
         fxBaseCurrency: String? = nil,
         recurringRuleID: UUID? = nil,
+        externalID: String? = nil,
         isRegret: Bool = false,
         regretEmoji: String? = nil,
         regretNote: String? = nil,
@@ -96,6 +104,7 @@ final class Transaction {
         self.fxRateToBase = fxRateToBase
         self.fxBaseCurrency = fxBaseCurrency
         self.recurringRuleID = recurringRuleID
+        self.externalID = externalID
         self.isRegret = isRegret
         self.regretEmoji = regretEmoji
         self.regretNote = regretNote

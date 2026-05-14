@@ -1,10 +1,10 @@
 # Bank Sync — Procurement & Integration
 
-This is the *commercial* track for bank sync. Code-wise the
-abstraction is already shipped (`BankSyncProvider` + the active-stub
-pattern). What's missing is a real provider with production
-credentials, and that needs a procurement conversation you can't do
-in code.
+> **Status (May 2026):** GoCardless Bank Account Data is **wired and
+> shipping**. IE + UK supported on day one. Each user supplies their
+> own free-tier credentials — see "User onboarding" below. Tink /
+> TrueLayer / Plaid stubs remain in the registry as procurement
+> upgrade targets for when volume justifies paying.
 
 ## Why we need an aggregator
 
@@ -164,15 +164,64 @@ For a free-app model, GoCardless's free tier is the only viable
 default. If we go paid (subscription or one-time), even €1/user/month
 covers the worst-case Plaid number.
 
-## Decision points (you need to make these before I can ship a real provider)
+## User onboarding (BYO GoCardless credentials)
 
-1. **Provider** — GoCardless for v1, Tink later? Or Tink from day one?
-2. **Region rollout** — IE only first, or IE+UK simultaneously?
-3. **Pricing model** — does the app charge users? If yes, how much,
-   what tier (free Foundation Models + paid bank sync? Bundle
-   everything?).
-4. **Aggregator hosted vs custom consent** — Tink Link is faster
-   to ship; a custom flow is more on-brand but takes weeks longer.
+Because the free PSD2 tier is per-integrator (100 requisitions/month),
+bundling one shared key in the app would let any user drain everyone
+else's quota the moment the binary leaks. Instead, each user creates
+their own free-tier account — same pattern as the Anthropic API key.
 
-When you've made these calls, ping me and we wire up the real provider
-behind the existing protocol.
+In the app: Settings → Connections → Connect a bank → if not
+configured, the user is shown a `GoCardlessSetupView` walking through:
+
+1. Visit `bankaccountdata.gocardless.com` and sign up (free, no card).
+2. Under "User Secrets" create a new key pair.
+3. Paste Secret ID + Secret Key into BudgetBot.
+4. We immediately attempt a token exchange + institutions query — if
+   it succeeds the credentials are stored in Keychain; if it fails we
+   wipe both and surface the error so the user isn't stuck in a
+   half-configured state.
+
+Once configured, the user picks a country (IE/GB/FR/DE/ES/IT/NL/BE/PT
+ship in the picker; adding more is one line), selects their bank from
+the list GoCardless returns, and is bounced through
+`ASWebAuthenticationSession` to the bank's consent flow. On return,
+GoCardless has linked the account(s) and we're free to pull
+transactions.
+
+Refreshing happens manually via "Sync now" on the connection card —
+background-refresh-on-foreground is the next step but doesn't ship in
+the first cut.
+
+## Import path
+
+`BankTransactionImporter` converts `BankTransactionRaw` rows into
+SwiftData `Transaction` records:
+
+1. Lookup by `externalID` — bank's tx id. If present, update existing
+   row (covers amount corrections / late-posting status changes).
+2. Else soft-dedup by `(PayeeNormaliser.key(payee), date, amount)`
+   against manual entries the user already captured — prevents a
+   receipt photo and a bank pull both creating the same transaction.
+3. Else insert a new `Transaction` with `confirmed = true`,
+   `aiExtracted = false`, `externalID = raw.id`, account = the local
+   `Account` row mirroring the bank account.
+
+Payee strings get `PayeeNormaliser.canonical(...)` so "TESCO STORES
+*4242 STRASBOURG" lands as "Tesco". Category hints from the bank are
+matched against existing `TxCategory` rows by case-insensitive name —
+we deliberately don't auto-create categories from bank hints because
+MCC codes are vague.
+
+## Decision points already made
+
+For reference — the four calls that unblocked this work:
+
+1. **Provider** — GoCardless first, Tink as the paid upgrade later.
+2. **Region rollout** — IE + UK simultaneously; same PSD2 regime,
+   GoCardless covers both.
+3. **Pricing model** — Free forever, BYO API keys (Anthropic +
+   GoCardless). The "no cut of your AI bill, no paywalled features,
+   no server we can sell out of" pitch.
+4. **Aggregator hosted vs custom consent** — Hosted (GoCardless's own
+   flow, opened via `ASWebAuthenticationSession`).

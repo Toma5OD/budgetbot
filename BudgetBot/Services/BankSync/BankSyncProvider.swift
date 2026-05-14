@@ -51,7 +51,7 @@ public protocol BankSyncProvider: Sendable {
 public typealias BankConnectionID = String
 public typealias BankAccountID = String
 
-public struct BankInstitution: Hashable, Codable, Sendable {
+public struct BankInstitution: Hashable, Codable, Sendable, Identifiable {
     public let id: String           // provider-scoped, opaque
     public let displayName: String
     public let country: String      // ISO-3166-1 alpha-2
@@ -166,8 +166,11 @@ public enum BankSyncError: LocalizedError, Sendable {
 /// one comes from `UserDefaults["BudgetBot.bankProvider"]`.
 public enum BankSyncRegistry {
     /// All known providers, configured or not. Used to render the
-    /// Settings picker.
+    /// Settings picker. GoCardless is first because it's the only
+    /// real implementation we currently ship — the others are stubs
+    /// (the procurement track for Tink / TrueLayer / Plaid).
     public static var all: [any BankSyncProvider] = [
+        GoCardlessBankSyncProvider(),
         StubBankSyncProvider(name: "Tink", country: "IE"),
         StubBankSyncProvider(name: "TrueLayer", country: "GB"),
         StubBankSyncProvider(name: "Plaid", country: "US")

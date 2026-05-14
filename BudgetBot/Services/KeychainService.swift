@@ -7,6 +7,19 @@ enum KeychainKey: String {
     case anthropicAPIKey = "com.budgetbot.anthropicAPIKey"
     case appleUserID     = "com.budgetbot.appleUserID"
     case googleUserID    = "com.budgetbot.googleUserID"
+
+    // GoCardless Bank Account Data — the PSD2 aggregator powering
+    // bank sync. Each user creates their own free-tier account at
+    // bankaccountdata.gocardless.com and pastes both secrets here;
+    // we exchange them for short-lived access + refresh tokens that
+    // we also cache so the access token survives app restarts.
+    case goCardlessSecretID     = "com.budgetbot.goCardlessSecretID"
+    case goCardlessSecretKey    = "com.budgetbot.goCardlessSecretKey"
+    case goCardlessAccessToken  = "com.budgetbot.goCardlessAccessToken"
+    case goCardlessRefreshToken = "com.budgetbot.goCardlessRefreshToken"
+    /// ISO8601 string — when the cached access token expires. Saves
+    /// us a pre-emptive refresh on every call.
+    case goCardlessAccessExpiry = "com.budgetbot.goCardlessAccessExpiry"
 }
 
 struct KeychainService {
