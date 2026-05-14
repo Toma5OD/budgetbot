@@ -102,6 +102,8 @@ struct TransactionDetailView: View {
                 }
             }
 
+            HindsightRatingSection(tx: tx)
+
             RegretSection(tx: tx)
 
             Section {
@@ -115,6 +117,73 @@ struct TransactionDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") { try? context.save() }
             }
+        }
+    }
+}
+
+private struct HindsightRatingSection: View {
+    @Bindable var tx: Transaction
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        Section {
+            HStack(spacing: 14) {
+                ForEach(1...5, id: \.self) { star in
+                    Button {
+                        // Tap the same star twice to clear.
+                        if tx.hindsightRating == star {
+                            tx.hindsightRating = nil
+                            tx.hindsightRatedAt = nil
+                        } else {
+                            tx.hindsightRating = star
+                            tx.hindsightRatedAt = .now
+                        }
+                        try? context.save()
+                    } label: {
+                        Image(systemName: (tx.hindsightRating ?? 0) >= star
+                              ? "star.fill" : "star")
+                            .font(.title2)
+                            .foregroundStyle(starTint(star))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+                if let rated = tx.hindsightRatedAt {
+                    Text(rated, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("In hindsight…")
+        } footer: {
+            Text(footerText)
+        }
+    }
+
+    private func starTint(_ star: Int) -> Color {
+        guard let rating = tx.hindsightRating, rating >= star else {
+            return .gray.opacity(0.4)
+        }
+        switch rating {
+        case 1: return .red
+        case 2: return .orange
+        case 3: return .yellow
+        case 4: return Color(red: 0.5, green: 0.8, blue: 0.3)
+        default: return .green
+        }
+    }
+
+    private var footerText: String {
+        switch tx.hindsightRating {
+        case nil: return "Tap a star to score this purchase 1-5. Powers the Rate-in-Hindsight game and analytics."
+        case 1: return "Total L."
+        case 2: return "Wouldn't again."
+        case 3: return "Did its job."
+        case 4: return "Worth it."
+        case 5: return "No notes."
+        default: return ""
         }
     }
 }

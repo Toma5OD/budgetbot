@@ -199,6 +199,21 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.hallOfShame")
+
+                    RowDivider()
+
+                    NavigationLink {
+                        HindsightReviewView()
+                    } label: {
+                        SettingsRow("Rate in hindsight",
+                                    subtitle: "Score past purchases 1-5. The data tightens analytics; the swipe deck is the game.",
+                                    icon: "star.leadinghalf.filled",
+                                    tint: .yellow) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.rateInHindsight")
                 }
 
                 section("Appearance") {

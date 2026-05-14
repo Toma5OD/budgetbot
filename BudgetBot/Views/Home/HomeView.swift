@@ -16,6 +16,13 @@ struct HomeView: View {
     @Query(filter: #Predicate<Transaction> { $0.confirmed && $0.isRegret },
            sort: \Transaction.date, order: .reverse)
     private var regrets: [Transaction]
+    @Query(
+        filter: #Predicate<Transaction> {
+            $0.confirmed && $0.hindsightRating == nil && $0.amount < 0
+        },
+        sort: \Transaction.date, order: .reverse
+    )
+    private var unratedForHindsight: [Transaction]
     @Query(filter: #Predicate<Account> { !$0.archived }, sort: \Account.createdAt)
     private var accounts: [Account]
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
@@ -37,6 +44,7 @@ struct HomeView: View {
                     greeting
                     monthHero
                     quickActions
+                    if unratedForHindsight.count >= 10 { hindsightBanner }
                     if !regrets.isEmpty { regretsBanner }
                     accountsStrip
                     if !rules.isEmpty { subscriptionsTeaser }
@@ -56,7 +64,8 @@ struct HomeView: View {
             }
             .navigationDestination(for: HomeRoute.self) { route in
                 switch route {
-                case .hallOfShame: HallOfShameView()
+                case .hallOfShame:      HallOfShameView()
+                case .hindsightReview:  HindsightReviewView()
                 }
             }
             .sheet(isPresented: $showAddAccount) {
@@ -207,6 +216,39 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
             .themedCard()
+        }
+        .buttonStyle(.pressable)
+    }
+
+    // MARK: - Hindsight banner
+
+    private var hindsightBanner: some View {
+        NavigationLink(value: HomeRoute.hindsightReview) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [.yellow, .orange.opacity(0.75)],
+                            startPoint: .top, endPoint: .bottom))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "star.leadinghalf.filled")
+                        .font(.title3.bold())
+                        .foregroundStyle(.white)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Rate \(unratedForHindsight.count) purchases")
+                        .font(.subheadline.bold())
+                    Text("Quick game — tap or swipe stars. Tightens your analytics.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .themedCard()
+            .padding(.horizontal, 16)
         }
         .buttonStyle(.pressable)
     }
@@ -393,6 +435,7 @@ struct HomeView: View {
 /// raw model). Add cases here when adding new pushable screens.
 enum HomeRoute: Hashable {
     case hallOfShame
+    case hindsightReview
 }
 
 // MARK: - Account tile

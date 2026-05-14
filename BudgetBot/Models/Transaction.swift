@@ -39,6 +39,17 @@ final class Transaction {
     /// Optional one-liner from the user explaining why this stung.
     var regretNote: String?
 
+    /// 1-5 star rating the user gave this purchase *in hindsight* through
+    /// the rate-your-purchases game. `nil` = not rated yet. The intent is
+    /// retrospective signal — "knowing what you know now, was it worth
+    /// it?" — distinct from the `isRegret` boolean flag (which is more
+    /// "this stung enough to nominate for the Hall of Shame").
+    var hindsightRating: Int?
+    /// When the rating was last set or changed. Lets us surface
+    /// "rated 3 days ago" labels and keep an audit trail if we ever
+    /// expose rating history.
+    var hindsightRatedAt: Date?
+
     @Relationship var account: Account?
     @Relationship var category: TxCategory?
     @Relationship(deleteRule: .cascade) var attachment: Attachment?
@@ -64,6 +75,8 @@ final class Transaction {
         isRegret: Bool = false,
         regretEmoji: String? = nil,
         regretNote: String? = nil,
+        hindsightRating: Int? = nil,
+        hindsightRatedAt: Date? = nil,
         account: Account? = nil,
         category: TxCategory? = nil,
         attachment: Attachment? = nil,
@@ -86,6 +99,8 @@ final class Transaction {
         self.isRegret = isRegret
         self.regretEmoji = regretEmoji
         self.regretNote = regretNote
+        self.hindsightRating = hindsightRating
+        self.hindsightRatedAt = hindsightRatedAt
         self.account = account
         self.category = category
         self.attachment = attachment
