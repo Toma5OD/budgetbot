@@ -27,10 +27,23 @@ final class CaptureQueueService {
 
     init(container: ModelContainer) {
         self.container = container
+        // When connectivity returns, drain any receipts that were
+        // captured while offline. `pump()` is idempotent so a spurious
+        // reconnect signal costs nothing.
+        NetworkMonitor.shared.onReconnect { [weak self] in
+            self?.pump()
+        }
     }
 
     func wire(fx: FXService) {
         self.fx = fx
+    }
+
+    /// Outcome of a single job pass — lets `drain()` decide whether to
+    /// keep going or stop and wait for connectivity.
+    private enum ProcessOutcome {
+        case done            // committed / awaitingReview / failed — move on
+        case deferredOffline // network dropped — job re-queued, stop draining
     }
 
     // MARK: - Public
@@ -38,12 +51,32 @@ final class CaptureQueueService {
     /// Pump the queue. Idempotent; the service will only run one job at a
     /// time even if poked repeatedly.
     func pump() {
+        recoverOrphanedJobs()
         refreshCounts()
         guard inflight == nil else { return }
         inflight = Task { [weak self] in
             await self?.drain()
             self?.inflight = nil
         }
+    }
+
+    /// A job left in `.processing` while nothing is in flight was
+    /// orphaned — the app was killed mid-extraction. Reset it to
+    /// `.queued` so the next drain retries it, rather than leaving it
+    /// wedged forever. Internal (not private) so it's unit-testable.
+    func recoverOrphanedJobs() {
+        guard inflight == nil else { return }
+        let ctx = container.mainContext
+        let descriptor = FetchDescriptor<CaptureJob>(
+            predicate: #Predicate { $0.statusRaw == "processing" }
+        )
+        let orphans = (try? ctx.fetch(descriptor)) ?? []
+        guard !orphans.isEmpty else { return }
+        for job in orphans {
+            job.status = .queued
+            job.startedAt = nil
+        }
+        try? ctx.save()
     }
 
     /// Mark a job's drafts as committed by the user (called after Review UI
@@ -68,8 +101,15 @@ final class CaptureQueueService {
     // MARK: - Internals
 
     private func drain() async {
+        // Pre-flight: don't start jobs while offline — they'd just burn
+        // CPU to fail. Leave them `queued`; NetworkMonitor's reconnect
+        // hook re-pumps us when connectivity is back.
+        guard NetworkMonitor.shared.isOnline else {
+            refreshCounts()
+            return
+        }
         while let job = nextQueued() {
-            await process(job)
+            if await process(job) == .deferredOffline { break }
         }
         refreshCounts()
     }
@@ -83,7 +123,7 @@ final class CaptureQueueService {
         return (try? ctx.fetch(descriptor))?.first
     }
 
-    private func process(_ job: CaptureJob) async {
+    private func process(_ job: CaptureJob) async -> ProcessOutcome {
         let ctx = container.mainContext
         job.status = .processing
         job.startedAt = .now
@@ -115,7 +155,7 @@ final class CaptureQueueService {
             job.errorMessage = "Nothing to send to the AI"
             job.completedAt = .now
             try? ctx.save()
-            return
+            return .done
         }
 
         // Surface accounts so the AI can hint payment routing.
@@ -131,7 +171,7 @@ final class CaptureQueueService {
             job.errorMessage = "No AI API key configured"
             job.completedAt = .now
             try? ctx.save()
-            return
+            return .done
         }
 
         do {
@@ -145,7 +185,7 @@ final class CaptureQueueService {
                 job.errorMessage = "AI didn't find any transactions"
                 job.completedAt = .now
                 try? ctx.save()
-                return
+                return .done
             }
             if job.critiqueMode {
                 do {
@@ -175,11 +215,26 @@ final class CaptureQueueService {
             }
             job.completedAt = .now
             try? ctx.save()
+            return .done
         } catch {
+            // Offline at the moment of failure → this isn't a failure,
+            // it's a deferral. Put the job back to `.queued`, clear the
+            // diagnostic, and stop draining. The NetworkMonitor
+            // reconnect hook restarts the pump when we're back online,
+            // so the receipt processes itself with no user action.
+            if !NetworkMonitor.shared.isOnline {
+                job.status = .queued
+                job.startedAt = nil
+                job.errorMessage = nil
+                try? ctx.save()
+                refreshCounts()
+                return .deferredOffline
+            }
             job.status = .failed
             job.errorMessage = error.localizedDescription
             job.completedAt = .now
             try? ctx.save()
+            return .done
         }
     }
 

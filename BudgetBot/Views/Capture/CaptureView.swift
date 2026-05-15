@@ -116,15 +116,24 @@ struct CaptureView: View {
     }
 
     private var pillTitle: String {
+        // Offline + queued: the receipts aren't "queued for the bot",
+        // they're parked waiting for a connection. Say so plainly.
+        let offlineWaiting = !NetworkMonitor.shared.isOnline && queue.queuedCount > 0
+        let queuedLabel = offlineWaiting
+            ? "\(queue.queuedCount) waiting for connection"
+            : "\(queue.queuedCount) queued"
         let parts = [
             queue.processingCount > 0 ? "\(queue.processingCount) processing"     : nil,
-            queue.queuedCount     > 0 ? "\(queue.queuedCount) queued"             : nil,
+            queue.queuedCount     > 0 ? queuedLabel                               : nil,
             queue.awaitingReviewCount > 0 ? "\(queue.awaitingReviewCount) ready to review" : nil
         ].compactMap { $0 }
         return parts.isEmpty ? "Idle" : parts.joined(separator: " · ")
     }
 
     private var pillSubtitle: String {
+        if !NetworkMonitor.shared.isOnline && queue.queuedCount > 0 {
+            return "Captured offline — the bot reads these the moment you're back online."
+        }
         if queue.awaitingReviewCount > 0 {
             return "Open Notifications when you're done capturing."
         }
