@@ -276,8 +276,12 @@ struct HindsightReviewView: View {
         lastRatedAt = tx.hindsightRatedAt
         tx.hindsightRating = rating
         tx.hindsightRatedAt = .now
+        // If this tx is part of a recurring series (Netflix / rent / phone
+        // bill), copy the rating to every other tx in the series so the
+        // user isn't asked to rate the same Netflix charge fourteen times.
+        let propagated = SeriesLinker.propagate(ratingFrom: tx, in: context)
         try? context.save()
-        ratedThisSession += 1
+        ratedThisSession += 1 + propagated
         // Animate the card off in the direction of the rating: low → left,
         // high → right.
         let direction: CGFloat = rating >= 3 ? 600 : -600

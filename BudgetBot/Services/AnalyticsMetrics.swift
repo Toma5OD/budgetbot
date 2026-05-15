@@ -471,6 +471,101 @@ enum AnalyticsMetrics {
         )
     }
 
+    // MARK: - Hindsight ratings (self-validated regrets)
+
+    struct HindsightBreakdown: Equatable {
+        /// Per-category average rating (1.0-5.0) + count of rated tx.
+        let perCategory: [Bucket]
+        /// Per-merchant average rating (1.0-5.0) + count of rated tx.
+        let perMerchant: [Bucket]
+        /// Total period spend on transactions rated 1 or 2 stars.
+        let lowRatedSpend: Decimal
+        /// Total period spend on transactions rated 4 or 5 stars.
+        let highRatedSpend: Decimal
+        /// Total period spend on rated transactions, regardless of score.
+        let totalRatedSpend: Decimal
+        /// Counts.
+        let ratedCount: Int
+        let unratedCount: Int
+
+        struct Bucket: Equatable, Identifiable {
+            let id = UUID()
+            let name: String
+            let averageRating: Double
+            let count: Int
+            /// Absolute spend on rated txs in this bucket, base currency.
+            let totalSpend: Decimal
+        }
+    }
+
+    /// Builds the hindsight breakdown over expense transactions. Only
+    /// considers tx with `hindsightRating != nil`. Excludes income
+    /// because rating "did this paycheck deliver?" doesn't make sense
+    /// in the same frame.
+    static func hindsightBreakdown(
+        in txs: [Transaction],
+        base: String,
+        convert: Converter
+    ) -> HindsightBreakdown {
+        var byCategory: [String: (sum: Int, count: Int, spend: Decimal)] = [:]
+        var byMerchant: [String: (sum: Int, count: Int, spend: Decimal)] = [:]
+        var lowSpend: Decimal = 0
+        var highSpend: Decimal = 0
+        var totalRated: Decimal = 0
+        var ratedCount = 0
+        var unratedCount = 0
+
+        for tx in txs where tx.amount < 0 {
+            guard let rating = tx.hindsightRating else {
+                unratedCount += 1
+                continue
+            }
+            ratedCount += 1
+            let amount = -tx.amountInBase(base, liveConvert: convert)
+            totalRated += amount
+            if rating <= 2 { lowSpend += amount }
+            if rating >= 4 { highSpend += amount }
+
+            let catName = tx.category?.name ?? "Uncategorised"
+            var c = byCategory[catName] ?? (0, 0, 0)
+            c.sum += rating; c.count += 1; c.spend += amount
+            byCategory[catName] = c
+
+            var m = byMerchant[tx.payee] ?? (0, 0, 0)
+            m.sum += rating; m.count += 1; m.spend += amount
+            byMerchant[tx.payee] = m
+        }
+
+        let categoryBuckets: [HindsightBreakdown.Bucket] = byCategory
+            .map { (name, agg) in
+                .init(name: name,
+                      averageRating: Double(agg.sum) / Double(agg.count),
+                      count: agg.count,
+                      totalSpend: agg.spend)
+            }
+            .sorted { $0.averageRating < $1.averageRating }   // worst first
+
+        let merchantBuckets: [HindsightBreakdown.Bucket] = byMerchant
+            .filter { $0.value.count >= 2 }          // single-visit isn't a signal
+            .map { (name, agg) in
+                .init(name: name,
+                      averageRating: Double(agg.sum) / Double(agg.count),
+                      count: agg.count,
+                      totalSpend: agg.spend)
+            }
+            .sorted { $0.averageRating < $1.averageRating }
+
+        return HindsightBreakdown(
+            perCategory: categoryBuckets,
+            perMerchant: merchantBuckets,
+            lowRatedSpend: lowSpend,
+            highRatedSpend: highSpend,
+            totalRatedSpend: totalRated,
+            ratedCount: ratedCount,
+            unratedCount: unratedCount
+        )
+    }
+
     // MARK: - Anomaly detection
 
     struct Anomaly: Identifiable, Equatable {

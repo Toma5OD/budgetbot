@@ -78,6 +78,7 @@ struct AnalyticsView: View {
                     if regretSummary.count > 0 { dickheadSection }
                     categoryBreakdown
                     behaviouralCards
+                    yourVerdictSection
                     valueForMoneySection
                     topMerchants
                     viceTrackerSection
@@ -646,6 +647,108 @@ struct AnalyticsView: View {
         }
     }
 
+    // MARK: - Your Verdict (hindsight ratings)
+
+    /// User-validated regret. Only renders once the user has rated
+    /// enough transactions (≥3) for the averages to mean something.
+    @ViewBuilder
+    private var yourVerdictSection: some View {
+        let h = AnalyticsMetrics.hindsightBreakdown(
+            in: inRange, base: base, convert: convert)
+        if h.ratedCount >= 3 {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Label("Your Verdict", systemImage: "star.lefthalf.fill")
+                        .font(.headline)
+                        .foregroundStyle(palette[2 % palette.count])
+                    Spacer()
+                    Text("\(h.ratedCount) rated · \(h.unratedCount) to go")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("You rated as Ls")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        AnimatedDecimal(
+                            target: h.lowRatedSpend, currency: base,
+                            font: .title.bold().monospacedDigit(),
+                            color: theme.current.expenseColor
+                        )
+                        Text("rated 1-2 stars in hindsight")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Worth it")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Text(CurrencyFormatter.string(for: h.highRatedSpend, currency: base))
+                            .font(.title3.bold().monospacedDigit())
+                            .foregroundStyle(theme.current.incomeColor)
+                        Text("rated 4-5 stars")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let worst = h.perCategory.first, worst.averageRating < 3 {
+                    Divider()
+                    verdictRow(
+                        title: "Worst category",
+                        name: worst.name,
+                        avg: worst.averageRating,
+                        spend: worst.totalSpend,
+                        tint: theme.current.expenseColor
+                    )
+                }
+                if let best = h.perCategory.last, best.averageRating > 3.5 {
+                    verdictRow(
+                        title: "Best category",
+                        name: best.name,
+                        avg: best.averageRating,
+                        spend: best.totalSpend,
+                        tint: theme.current.incomeColor
+                    )
+                }
+                if let worstMerchant = h.perMerchant.first, worstMerchant.averageRating < 3 {
+                    verdictRow(
+                        title: "Lowest-rated merchant",
+                        name: worstMerchant.name,
+                        avg: worstMerchant.averageRating,
+                        spend: worstMerchant.totalSpend,
+                        tint: theme.current.expenseColor
+                    )
+                }
+            }
+            .padding(16)
+            .themedCard()
+        }
+    }
+
+    private func verdictRow(title: String, name: String, avg: Double,
+                            spend: Decimal, tint: Color) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.caption2).foregroundStyle(.tertiary)
+                Text(name).font(.callout.bold()).lineLimit(1)
+            }
+            Spacer()
+            HStack(spacing: 4) {
+                Image(systemName: "star.fill").font(.caption2).foregroundStyle(tint)
+                Text(String(format: "%.1f", avg))
+                    .font(.callout.bold().monospacedDigit())
+                    .foregroundStyle(tint)
+            }
+            Text("· \(CurrencyFormatter.string(for: spend, currency: base))")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - Value for money
 
     private var valueForMoneySection: some View {
@@ -1099,6 +1202,11 @@ struct AnalyticsView: View {
                 context.insert(rule)
             }
         }
+        // Back-link transactions to their rules + propagate ratings
+        // within each series. Cheap pass — only mutates when something
+        // actually changes.
+        let allRules = (try? context.fetch(FetchDescriptor<RecurringRule>())) ?? []
+        SeriesLinker.backlink(rules: allRules, transactions: transactions)
         try? context.save()
     }
 

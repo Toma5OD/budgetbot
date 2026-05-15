@@ -125,6 +125,11 @@ private struct HindsightRatingSection: View {
     @Bindable var tx: Transaction
     @Environment(\.modelContext) private var context
 
+    /// Cached series-size lookup. Recomputed when the transaction's
+    /// `recurringRuleID` changes (i.e. when the periodic scan back-
+    /// links it).
+    @State private var seriesSiblings: Int = 0
+
     var body: some View {
         Section {
             HStack(spacing: 14) {
@@ -137,6 +142,7 @@ private struct HindsightRatingSection: View {
                         } else {
                             tx.hindsightRating = star
                             tx.hindsightRatedAt = .now
+                            SeriesLinker.propagate(ratingFrom: tx, in: context)
                         }
                         try? context.save()
                     } label: {
@@ -160,6 +166,9 @@ private struct HindsightRatingSection: View {
         } footer: {
             Text(footerText)
         }
+        .onAppear {
+            seriesSiblings = SeriesLinker.seriesSize(for: tx, in: context)
+        }
     }
 
     private func starTint(_ star: Int) -> Color {
@@ -176,13 +185,16 @@ private struct HindsightRatingSection: View {
     }
 
     private var footerText: String {
+        let seriesNote = seriesSiblings > 0
+            ? " Part of a recurring series — rating this also rates the other \(seriesSiblings)."
+            : ""
         switch tx.hindsightRating {
-        case nil: return "Tap a star to score this purchase 1-5. Powers the Rate-in-Hindsight game and analytics."
-        case 1: return "Total L."
-        case 2: return "Wouldn't again."
-        case 3: return "Did its job."
-        case 4: return "Worth it."
-        case 5: return "No notes."
+        case nil: return "Tap a star to score this purchase 1-5. Powers the Rate-in-Hindsight game and analytics." + seriesNote
+        case 1: return "Total L." + seriesNote
+        case 2: return "Wouldn't again." + seriesNote
+        case 3: return "Did its job." + seriesNote
+        case 4: return "Worth it." + seriesNote
+        case 5: return "No notes." + seriesNote
         default: return ""
         }
     }
