@@ -1775,78 +1775,85 @@ struct AnalyticsView: View {
         }
     }
 
-    // MARK: - Brand Tax
+    // MARK: - Premium vs Budget shops
 
+    /// Only renders when the user has spend on *both* sides. A
+    /// premium-only shopper has no comparator; a budget-only shopper
+    /// has no "tax" to surface — either case, the card is noise.
     @ViewBuilder
     private var brandTaxCard: some View {
         let s = AnalyticsMetrics.brandTax(
             in: inRange, base: base, convert: convert)
-        if let share = s.premiumShare, s.premiumSpend > 0 || s.valueSpend > 0 {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label("Brand Tax", systemImage: "tag.fill")
+        if let share = s.premiumShare,
+           s.premiumSpend > 0,
+           s.valueSpend > 0 {
+
+            let premiumPct = Int((share * 100).rounded())
+
+            VStack(alignment: .leading, spacing: 14) {
+                // Header — clear name + one-line "what this is".
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Premium vs budget shops", systemImage: "tag.fill")
                         .font(.headline)
                         .foregroundStyle(palette[1 % palette.count])
-                    Spacer()
-                    Text("\(Int((share * 100).rounded()))% premium")
-                        .font(.caption.bold().monospacedDigit())
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(
-                            (share > 0.5 ? theme.current.expenseColor
-                                         : theme.current.incomeColor).opacity(0.15),
-                            in: Capsule()
-                        )
-                        .foregroundStyle(share > 0.5 ? theme.current.expenseColor
-                                                    : theme.current.incomeColor)
+                    Text("Comparing your spend at premium retailers (M&S, Brown Thomas, Tesco Finest) against value/budget ones (Lidl, Aldi, Penneys).")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
 
-                // Split bar: premium vs value side by side.
+                // Split bar: premium left, value right.
                 GeometryReader { geo in
                     HStack(spacing: 2) {
-                        if s.premiumSpend > 0 {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(LinearGradient(
-                                    colors: [theme.current.expenseColor,
-                                             theme.current.expenseColor.opacity(0.6)],
-                                    startPoint: .leading, endPoint: .trailing))
-                                .frame(width: geo.size.width * (appearAnimation ? share : 0))
-                        }
-                        if s.valueSpend > 0 {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(LinearGradient(
-                                    colors: [theme.current.incomeColor,
-                                             theme.current.incomeColor.opacity(0.6)],
-                                    startPoint: .leading, endPoint: .trailing))
-                                .frame(width: geo.size.width * (appearAnimation ? (1 - share) : 0))
-                        }
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(LinearGradient(
+                                colors: [theme.current.expenseColor,
+                                         theme.current.expenseColor.opacity(0.6)],
+                                startPoint: .leading, endPoint: .trailing))
+                            .frame(width: geo.size.width * share)
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(LinearGradient(
+                                colors: [theme.current.incomeColor,
+                                         theme.current.incomeColor.opacity(0.6)],
+                                startPoint: .leading, endPoint: .trailing))
+                            .frame(width: geo.size.width * (1 - share))
                     }
-                    .animation(.spring(response: 0.9, dampingFraction: 0.85), value: appearAnimation)
                 }
                 .frame(height: 14)
 
-                HStack {
+                // Labelled totals — name the kind of shop, not just "Premium".
+                HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Premium").font(.caption2).foregroundStyle(.tertiary)
+                        HStack(spacing: 4) {
+                            Circle().fill(theme.current.expenseColor)
+                                .frame(width: 7, height: 7)
+                            Text("Premium shops").font(.caption2).foregroundStyle(.secondary)
+                        }
                         Text(CurrencyFormatter.string(for: s.premiumSpend, currency: base))
                             .font(.callout.bold().monospacedDigit())
-                            .foregroundStyle(theme.current.expenseColor)
+                        Text("\(premiumPct)% of the mix")
+                            .font(.caption2).foregroundStyle(.tertiary)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text("Value").font(.caption2).foregroundStyle(.tertiary)
+                        HStack(spacing: 4) {
+                            Text("Budget shops").font(.caption2).foregroundStyle(.secondary)
+                            Circle().fill(theme.current.incomeColor)
+                                .frame(width: 7, height: 7)
+                        }
                         Text(CurrencyFormatter.string(for: s.valueSpend, currency: base))
                             .font(.callout.bold().monospacedDigit())
-                            .foregroundStyle(theme.current.incomeColor)
+                        Text("\(100 - premiumPct)% of the mix")
+                            .font(.caption2).foregroundStyle(.tertiary)
                     }
                 }
 
                 if s.estimatedSavingsAt30Off > 0, let top = s.topPremiumMerchant {
                     Divider()
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "arrow.down.circle.fill")
-                            .font(.caption)
+                            .font(.callout)
                             .foregroundStyle(theme.current.incomeColor)
-                        Text("Swap \(top) for the own-brand and you'd claw back about \(CurrencyFormatter.string(for: s.estimatedSavingsAt30Off, currency: base)).")
+                        Text("Swap \(top) for the own-brand equivalent and you'd claw back roughly \(CurrencyFormatter.string(for: s.estimatedSavingsAt30Off, currency: base)).")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
