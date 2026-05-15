@@ -264,32 +264,53 @@ struct ConfiguredBankView: View {
             HStack {
                 Text(c.institution.displayName).font(.headline)
                 Spacer()
-                Text("Connected \(c.connectedAt.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.caption2).foregroundStyle(.secondary)
+                if c.needsReconnect {
+                    Text("Reconnect needed")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(.orange.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("Connected \(c.connectedAt.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
             }
-            ForEach(c.accounts) { acct in
-                HStack {
-                    Image(systemName: "creditcard.fill")
-                        .foregroundStyle(theme.current.tint)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(acct.displayName).font(.callout)
-                        if let mask = acct.mask {
-                            Text("•• \(mask)")
-                                .font(.caption2).foregroundStyle(.secondary)
+            if c.needsReconnect {
+                Text("Your bank's PSD2 consent expired. One tap re-runs the consent flow — no data is lost.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(c.accounts) { acct in
+                    HStack {
+                        Image(systemName: "creditcard.fill")
+                            .foregroundStyle(theme.current.tint)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(acct.displayName).font(.callout)
+                            if let mask = acct.mask {
+                                Text("•• \(mask)")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
                         }
-                    }
-                    Spacer()
-                    if let bal = acct.balance {
-                        Text(CurrencyFormatter.string(for: bal, currency: acct.currency))
-                            .font(.callout.monospacedDigit())
+                        Spacer()
+                        if let bal = acct.balance {
+                            Text(CurrencyFormatter.string(for: bal, currency: acct.currency))
+                                .font(.callout.monospacedDigit())
+                        }
                     }
                 }
             }
             HStack {
-                Button("Sync now") {
-                    Task { await sync(connection: c) }
+                if c.needsReconnect {
+                    Button("Reconnect") {
+                        Task { await reconnect(c) }
+                    }
+                    .font(.caption.bold())
+                } else {
+                    Button("Sync now") {
+                        Task { await sync(connection: c) }
+                    }
+                    .font(.caption.bold())
                 }
-                .font(.caption.bold())
                 Spacer()
                 Button("Disconnect", role: .destructive) {
                     Task { await disconnect(c) }
@@ -299,6 +320,21 @@ struct ConfiguredBankView: View {
         }
         .padding(14)
         .themedCard()
+    }
+
+    @MainActor
+    private func reconnect(_ c: BankConnection) async {
+        // Drop the old requisition (idempotent on the stub path; deletes
+        // server-side on GoCardless) then create a fresh one for the
+        // same institution. Local Account rows are matched on name, so
+        // re-linking and re-syncing slot back into the same buckets.
+        do {
+            try await BankSyncRegistry.active.disconnect(c.id)
+            _ = try await BankSyncRegistry.active.connect(institution: c.institution)
+            await reload()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     @MainActor
@@ -314,33 +350,8 @@ struct ConfiguredBankView: View {
 
     @MainActor
     private func sync(connection: BankConnection) async {
-        for acct in connection.accounts {
-            // Find or create a local Account row that mirrors this
-            // bank account. Match on externalID-style name to avoid
-            // duplicating after a re-connect.
-            let allAccounts = (try? context.fetch(FetchDescriptor<Account>())) ?? []
-            let local: Account
-            if let match = allAccounts.first(where: { $0.name == "\(connection.institution.displayName) — \(acct.displayName)" }) {
-                local = match
-            } else {
-                local = Account(
-                    name: "\(connection.institution.displayName) — \(acct.displayName)",
-                    kind: .bank,
-                    institution: connection.institution.displayName,
-                    currency: acct.currency,
-                    openingBalance: acct.balance ?? 0
-                )
-                context.insert(local)
-            }
-
-            do {
-                let (rows, _) = try await BankSyncRegistry.active.transactions(
-                    account: acct.id, since: nil)
-                _ = try BankTransactionImporter.importRows(rows, into: local, context: context)
-            } catch {
-                self.error = error.localizedDescription
-            }
-        }
+        let summary = await BankSyncService.syncConnection(connection, in: context)
+        if let first = summary.errors.first { error = first }
     }
 
     @MainActor

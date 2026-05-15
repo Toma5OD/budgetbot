@@ -340,6 +340,36 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings.connectBank")
                 }
 
+                section("Data") {
+                    NavigationLink {
+                        CategoriesView()
+                    } label: {
+                        SettingsRow("Categories",
+                                    subtitle: "Add your own, edit emoji + name",
+                                    icon: "square.grid.2x2.fill",
+                                    tint: .indigo) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.categories")
+
+                    RowDivider()
+
+                    NavigationLink {
+                        ExportTransactionsView()
+                    } label: {
+                        SettingsRow("Export transactions",
+                                    subtitle: "CSV — for taxes, accountants, spreadsheets",
+                                    icon: "square.and.arrow.up",
+                                    tint: .teal) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.export")
+                }
+
                 section("Storage") {
                     SettingsRow("Sync to iCloud",
                                 subtitle: cloudKitToggle

@@ -89,14 +89,19 @@ enum BankTransactionImporter {
                 continue
             }
 
-            // Categorise by simple case-insensitive name match on the
-            // aggregator's hint. We deliberately don't auto-create
-            // categories from bank hints (banks send MCC codes / vague
-            // labels — better to leave uncategorised than pollute the
-            // catalog).
-            let category: TxCategory? = raw.categoryHint.flatMap { hint in
-                categories.first { $0.name.localizedCaseInsensitiveCompare(hint) == .orderedSame }
-            }
+            // Categorise. First try a case-insensitive name match on
+            // the bank's category hint — banks vary wildly in how
+            // useful that is. If that misses, fall back to our own
+            // MerchantClassifier so a Domino's row gets "Dining" /
+            // Insomnia gets "Coffee" / a Long Hall round gets
+            // "Alcohol" — even if the bank's hint was useless. We
+            // deliberately don't auto-create categories from bank
+            // hints (MCC codes are too vague to enrich the catalog).
+            let category: TxCategory? = raw.categoryHint
+                .flatMap { hint in
+                    categories.first { $0.name.localizedCaseInsensitiveCompare(hint) == .orderedSame }
+                }
+                ?? classifierCategory(for: canonicalPayee, from: categories)
             let tx = Transaction(
                 date: raw.date,
                 amount: raw.amount,
@@ -115,5 +120,33 @@ enum BankTransactionImporter {
 
         try context.save()
         return result
+    }
+
+    /// Fallback category resolver — when the bank's category hint
+    /// missed (or didn't ship at all), we look at the merchant name
+    /// itself. Maps the behavioural buckets `MerchantClassifier`
+    /// recognises to our default category catalogue:
+    ///
+    ///   - `.coffee`   → "Coffee"
+    ///   - `.alcohol`  → "Alcohol"
+    ///   - `.fastFood` → "Dining"   (no separate fast-food category)
+    ///
+    /// Premium / value retail aren't bucketable to a single category
+    /// (could be groceries, clothing, electronics…), so we leave them
+    /// uncategorised and let the user assign.
+    private static func classifierCategory(
+        for payee: String,
+        from categories: [TxCategory]
+    ) -> TxCategory? {
+        if MerchantClassifier.isCoffee(payee) {
+            return categories.first { $0.name == "Coffee" }
+        }
+        if MerchantClassifier.isAlcohol(payee: payee, categoryName: nil) {
+            return categories.first { $0.name == "Alcohol" }
+        }
+        if MerchantClassifier.isFastFood(payee) {
+            return categories.first { $0.name == "Dining" }
+        }
+        return nil
     }
 }

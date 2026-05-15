@@ -69,12 +69,20 @@ public struct BankConnection: Identifiable, Hashable, Codable, Sendable {
     public let institution: BankInstitution
     public let connectedAt: Date
     public let accounts: [BankAccountInfo]
+    /// `true` when the bank's consent has expired (or the requisition
+    /// went to a non-linked state). PSD2 caps active consents at 180
+    /// days in EU/UK; we conservatively flag at 89 days so the user
+    /// can renew before transactions stop arriving.
+    public let needsReconnect: Bool
+
     public init(id: BankConnectionID, institution: BankInstitution,
-                connectedAt: Date, accounts: [BankAccountInfo]) {
+                connectedAt: Date, accounts: [BankAccountInfo],
+                needsReconnect: Bool = false) {
         self.id = id
         self.institution = institution
         self.connectedAt = connectedAt
         self.accounts = accounts
+        self.needsReconnect = needsReconnect
     }
 }
 

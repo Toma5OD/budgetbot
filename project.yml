@@ -41,6 +41,10 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
           - remote-notification
+          - fetch
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - dev.toma5od.BudgetBot.refresh
     entitlements:
       path: BudgetBot/BudgetBot.entitlements
       properties:

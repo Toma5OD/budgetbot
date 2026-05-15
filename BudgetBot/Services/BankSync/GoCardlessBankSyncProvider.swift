@@ -89,22 +89,35 @@ public struct GoCardlessBankSyncProvider: BankSyncProvider {
     public func connections() async throws -> [BankConnection] {
         let reqs = try await api.requisitions()
         var out: [BankConnection] = []
-        for r in reqs where r.status == "LN" {
+        for r in reqs {
             // GoCardless institution ids are "INSTNAME_XX" where XX is
-            // the ISO country code. Fall back to IE if we can't parse.
+            // the ISO country code.
             let country = String(r.institution_id.suffix(2)).uppercased()
             guard let inst = try? await api.institutions(country: country)
                                             .first(where: { $0.id == r.institution_id })
             else { continue }
-            let infos: [BankAccountInfo] = await accountInfos(for: r.accounts)
+            let connectedAt = ISO8601DateFormatter().date(from: r.created) ?? .now
+            // Two reasons we'd flag as needs-reconnect:
+            //   - status != "LN": GC says the link is broken.
+            //   - linked but > 89 days old: PSD2 consent expires at 180d
+            //     in EU/UK; renew before things actually stop working.
+            let stale = Calendar.current.date(
+                byAdding: .day, value: 89, to: connectedAt
+            ).map { $0 < .now } ?? false
+            let needsReconnect = r.status != "LN" || stale
+
+            let infos: [BankAccountInfo] = needsReconnect
+                ? []                                    // can't read stale accounts
+                : await accountInfos(for: r.accounts)
             out.append(BankConnection(
                 id: r.id,
                 institution: BankInstitution(
                     id: inst.id, displayName: inst.name,
                     country: country,
                     logoURL: inst.logo.flatMap { URL(string: $0) }),
-                connectedAt: ISO8601DateFormatter().date(from: r.created) ?? .now,
-                accounts: infos
+                connectedAt: connectedAt,
+                accounts: infos,
+                needsReconnect: needsReconnect
             ))
         }
         return out

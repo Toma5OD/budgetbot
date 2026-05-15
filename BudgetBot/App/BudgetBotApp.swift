@@ -20,6 +20,10 @@ struct BudgetBotApp: App {
         q.wire(fx: fxService)
         _fx = State(initialValue: fxService)
         _queue = State(initialValue: q)
+
+        // Has to happen before the first didFinishLaunching — iOS
+        // refuses task identifiers registered any later.
+        BackgroundRefreshScheduler.register()
     }
 
     var body: some Scene {
@@ -39,14 +43,21 @@ struct BudgetBotApp: App {
                     queue.pump()
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active {
-                        // Refresh the widget data + reschedule local
+                    switch phase {
+                    case .active:
+                        // Refresh widget data + reschedule local
                         // notifications whenever the app comes to the
                         // foreground. Cheap; writes are atomic and
                         // UNUserNotificationCenter coalesces.
                         let context = ModelContext(PersistenceController.live)
                         WidgetSnapshotService.refresh(context: context, fx: fx)
                         Task { await rescheduleLocalNotifications(context: context) }
+                    case .background:
+                        // Bump the BGAppRefreshTask timer forward each
+                        // time the app heads to the background.
+                        BackgroundRefreshScheduler.scheduleNext()
+                    default:
+                        break
                     }
                 }
         }
