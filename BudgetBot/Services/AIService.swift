@@ -282,19 +282,40 @@ struct AIService {
         let key = apiKey
         guard !key.isEmpty else { throw AIError.missingKey }
 
+        // OCR pre-pass: if the user has on-device OCR enabled (default
+        // ON), try to extract text from every image input via Vision
+        // before we send anything to the LLM. When the OCR text is long
+        // enough to be useful we replace the image with a small text
+        // block — Anthropic charges roughly 10× more for image tokens
+        // than text tokens, so this is a big cost / latency win.
+        // When OCR is empty or unconvincing (faded thermal paper,
+        // handwriting, blurry shot) we keep the image so accuracy
+        // never regresses.
+        let useOCR = UserDefaults.standard.object(forKey: "BudgetBot.ocrEnabled") as? Bool ?? true
         var contentBlocks: [[String: Any]] = []
         for input in inputs {
             switch input {
             case .image(let img):
-                guard let jpeg = img.jpegData(compressionQuality: 0.8) else { continue }
-                contentBlocks.append([
-                    "type": "image",
-                    "source": [
-                        "type": "base64",
-                        "media_type": "image/jpeg",
-                        "data": jpeg.base64EncodedString()
-                    ]
-                ])
+                var ocrText: String?
+                if useOCR, let extracted = await VisionOCRService.extractIfUseful(from: img) {
+                    ocrText = extracted
+                }
+                if let text = ocrText {
+                    contentBlocks.append([
+                        "type": "text",
+                        "text": "RECEIPT_TEXT (extracted on-device via Vision OCR):\n\(text)"
+                    ])
+                } else {
+                    guard let jpeg = img.jpegData(compressionQuality: 0.8) else { continue }
+                    contentBlocks.append([
+                        "type": "image",
+                        "source": [
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": jpeg.base64EncodedString()
+                        ]
+                    ])
+                }
             case .pdf(let data, _):
                 contentBlocks.append([
                     "type": "document",

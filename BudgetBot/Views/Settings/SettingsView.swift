@@ -173,6 +173,24 @@ struct SettingsView: View {
 
                     RowDivider()
 
+                    SettingsRow("On-device OCR first",
+                                subtitle: "Extracts receipt text via Vision before calling the AI — faster, cheaper, works offline.",
+                                icon: "text.viewfinder",
+                                tint: .teal) {
+                        Toggle("", isOn: Binding(
+                            get: {
+                                UserDefaults.standard.object(forKey: "BudgetBot.ocrEnabled") as? Bool ?? true
+                            },
+                            set: {
+                                UserDefaults.standard.set($0, forKey: "BudgetBot.ocrEnabled")
+                            }
+                        ))
+                        .labelsHidden()
+                    }
+                    .accessibilityIdentifier("settings.ocrFirst")
+
+                    RowDivider()
+
                     SettingsRow("Critique pass",
                                 subtitle: "A 2nd AI audits the 1st (costs 2× API)",
                                 icon: "checkmark.seal.fill",
