@@ -225,6 +225,21 @@ struct SettingsView: View {
 
                 section("For fun") {
                     NavigationLink {
+                        DreamsView()
+                    } label: {
+                        SettingsRow("My dreams",
+                                    subtitle: "Engagement ring · house deposit · M3 — translates your spending into things you want.",
+                                    icon: "sparkles",
+                                    tint: .yellow) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.dreams")
+
+                    RowDivider()
+
+                    NavigationLink {
                         SavingsGoalsView()
                     } label: {
                         SettingsRow("Savings goals",

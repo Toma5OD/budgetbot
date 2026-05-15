@@ -16,7 +16,8 @@ enum SchemaV1: VersionedSchema {
         RecurringRule.self,
         CaptureJob.self,
         SavingsGoal.self,
-        GoalContribution.self
+        GoalContribution.self,
+        UserDream.self
     ]
 }
 

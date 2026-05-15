@@ -18,6 +18,9 @@ struct AnalyticsView: View {
     @Query(filter: #Predicate<RecurringRule> { !$0.dismissed },
            sort: \RecurringRule.lastSeen, order: .reverse)
     private var rules: [RecurringRule]
+    @Query(filter: #Predicate<UserDream> { $0.achievedAt == nil },
+           sort: \UserDream.createdAt, order: .reverse)
+    private var dreams: [UserDream]
 
     @State private var range: Range = .month
     @State private var customStart: Date = Calendar.current.date(byAdding: .day, value: -30, to: .now)!
@@ -43,6 +46,14 @@ struct AnalyticsView: View {
     @State private var donutRotation: Angle = .zero
     @State private var donutDragStartRotation: Angle = .zero
     @State private var isDraggingDonut: Bool = false
+
+    /// Typed nav destinations off the Analytics stack — anything that
+    /// isn't a raw model. Add cases here when adding new pushable
+    /// screens.
+    enum Route: Hashable {
+        case myDreams
+        case subscriptions
+    }
 
     enum Range: String, CaseIterable, Identifiable {
         case week = "Week", month = "Month", quarter = "Quarter", year = "Year", custom = "Custom"
@@ -73,6 +84,7 @@ struct AnalyticsView: View {
                         budgetCard(budget: budget)
                     }
                     needVsWantSection
+                    whatItCouldveBeenSection
                     anomaliesSection
                     flowChart
                     if regretSummary.count > 0 { dickheadSection }
@@ -102,6 +114,12 @@ struct AnalyticsView: View {
             }
             .navigationDestination(for: Transaction.self) { tx in
                 TransactionDetailView(tx: tx)
+            }
+            .navigationDestination(for: AnalyticsView.Route.self) { route in
+                switch route {
+                case .myDreams:        DreamsView()
+                case .subscriptions:   SubscriptionsView()
+                }
             }
         }
     }
@@ -213,6 +231,123 @@ struct AnalyticsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .themedCard()
+    }
+
+    // MARK: - What it could've been
+
+    /// Counterfactual card. Two columns:
+    ///   - Negative framing: "Your €X on alcohol = Y% of <thing>"
+    ///   - Positive framing (when savings > 0): "Your savings put you
+    ///     N months from <thing>"
+    @ViewBuilder
+    private var whatItCouldveBeenSection: some View {
+        // Build pools over the full transaction set (not just `inRange`)
+        // so the 3-month / 12-month windowing in CounterfactualEngine
+        // controls the timeframe rather than the user's current
+        // Analytics range picker.
+        let pools = CounterfactualEngine.vicePools(
+            in: transactions, base: base, convert: convert)
+        let vice = CounterfactualEngine.viceComparisons(
+            pools: pools, dreams: dreams)
+        let savingsRate = self.savingsRate
+        let monthlySavings: Decimal = savingsRate.rate > 0
+            ? (savingsRate.saved / max(1, Decimal(daysInRange))) * 30
+            : 0
+        let positive = CounterfactualEngine.savingsComparisons(
+            monthlySavingsEUR: monthlySavings,
+            dreams: dreams
+        )
+        if vice.isEmpty && positive.isEmpty { EmptyView() }
+        else {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Label("What it could've been", systemImage: "sparkles")
+                        .font(.headline)
+                        .foregroundStyle(palette[4 % palette.count])
+                    Spacer()
+                    NavigationLink(value: AnalyticsView.Route.myDreams) {
+                        Text(dreams.isEmpty ? "Add a dream" : "My dreams")
+                            .font(.caption.bold())
+                            .foregroundStyle(theme.current.tint)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if let top = vice.prefix(3).first {
+                    counterfactualCard(top, palette: palette)
+                }
+                if vice.count > 1 {
+                    ForEach(vice.dropFirst().prefix(2)) { c in
+                        counterfactualRow(c, palette: palette)
+                    }
+                }
+                if let bestSaving = positive.first {
+                    Divider()
+                    savingsRow(bestSaving)
+                }
+                if dreams.isEmpty {
+                    Text("Add your own dreams (engagement ring, M3, house deposit…) and the comparisons get personal.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(16)
+            .themedCard()
+        }
+    }
+
+    private func counterfactualCard(_ c: CounterfactualEngine.ViceComparison,
+                                    palette: [Color]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(c.pool.emoji).font(.title2)
+                Image(systemName: "arrow.right")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                Text(c.target.emoji).font(.title2)
+                if c.target.isUserDream {
+                    Text("YOUR DREAM")
+                        .font(.caption2.bold()).tracking(0.5)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(theme.current.tint.opacity(0.18), in: Capsule())
+                        .foregroundStyle(theme.current.tint)
+                }
+                Spacer()
+            }
+            Text(c.blurb)
+                .font(.callout)
+                .foregroundStyle(.primary)
+        }
+        .padding(12)
+        .background(theme.current.expenseColor.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func counterfactualRow(_ c: CounterfactualEngine.ViceComparison,
+                                   palette: [Color]) -> some View {
+        HStack(spacing: 10) {
+            Text(c.pool.emoji)
+            Image(systemName: "arrow.right")
+                .font(.caption2).foregroundStyle(.tertiary)
+            Text(c.target.emoji)
+            Text(c.blurb)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func savingsRow(_ s: CounterfactualEngine.SavingsComparison) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "leaf.fill")
+                .foregroundStyle(theme.current.incomeColor)
+            Text(s.target.emoji)
+            Text(s.blurb)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer()
+        }
     }
 
     // MARK: - Anomalies

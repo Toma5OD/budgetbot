@@ -69,6 +69,7 @@ struct HomeView: View {
                 case .hallOfShame:      HallOfShameView()
                 case .hindsightReview:  HindsightReviewView()
                 case .savingsGoals:     SavingsGoalsView()
+                case .subscriptions:    SubscriptionsView()
                 }
             }
             .navigationDestination(for: SavingsGoal.self) { goal in
@@ -406,38 +407,39 @@ struct HomeView: View {
                 Label("Subscriptions", systemImage: "arrow.triangle.2.circlepath.circle.fill")
                     .font(.subheadline.bold())
                 Spacer()
-                Button {
-                    selectedTab = 3   // Analytics tab
-                } label: {
+                NavigationLink(value: HomeRoute.subscriptions) {
                     Text("All")
                         .font(.caption.bold())
                         .foregroundStyle(.tint)
                 }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 20)
 
             let totalMonthly = rules.reduce(Decimal(0)) { acc, r in
                 acc + (-fx.convert(r.monthlyEstimate, from: r.currency, to: base))
             }
-            HStack(spacing: 14) {
-                Image(systemName: "repeat.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.purple)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(rules.count) recurring payment\(rules.count == 1 ? "" : "s")")
-                        .font(.subheadline.bold())
-                    Text("\(CurrencyFormatter.string(for: totalMonthly, currency: base))/month")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            NavigationLink(value: HomeRoute.subscriptions) {
+                HStack(spacing: 14) {
+                    Image(systemName: "repeat.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.purple)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(rules.count) recurring payment\(rules.count == 1 ? "" : "s")")
+                            .font(.subheadline.bold())
+                        Text("\(CurrencyFormatter.string(for: totalMonthly, currency: base))/month")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.tertiary)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.tertiary)
+                .padding(14)
+                .themedCard()
+                .padding(.horizontal, 16)
             }
-            .padding(14)
-            .themedCard()
-            .padding(.horizontal, 16)
-            .onTapGesture { selectedTab = 3 }
+            .buttonStyle(.pressable)
         }
     }
 
@@ -505,6 +507,7 @@ enum HomeRoute: Hashable {
     case hallOfShame
     case hindsightReview
     case savingsGoals
+    case subscriptions
 }
 
 // MARK: - Goal tile
