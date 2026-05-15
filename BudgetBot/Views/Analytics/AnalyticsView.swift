@@ -23,13 +23,23 @@ struct AnalyticsView: View {
     private var dreams: [UserDream]
 
     @State private var range: Range = .month
-    @State private var customStart: Date = Calendar.current.date(byAdding: .day, value: -30, to: .now)!
+    @State private var lens: Lens = .overview
+    @State private var customStart: Date = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
     @State private var customEnd: Date = .now
     @State private var loadingRecs = false
     @State private var error: String?
     @State private var selectedAngle: Double?
     @State private var appearAnimation = false
-    @State private var lastSubscriptionScan: Date?
+
+    /// Last time we ran the subscription scan. Persisted in UserDefaults
+    /// rather than `@State` so the 6-hour throttle in
+    /// `rescanSubscriptionsIfNeeded` actually survives navigating away
+    /// and back — a `@State` version reset on every view recreation,
+    /// making the throttle a no-op.
+    private var lastSubscriptionScan: Date? {
+        get { UserDefaults.standard.object(forKey: "BudgetBot.lastSubscriptionScan") as? Date }
+        nonmutating set { UserDefaults.standard.set(newValue, forKey: "BudgetBot.lastSubscriptionScan") }
+    }
 
     // Inline drilldown state — replaces the old modal sheet. Tapping a
     // row, a donut wedge, or a bar sets one of these and reveals
@@ -76,33 +86,22 @@ struct AnalyticsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     rangePicker
-                    heroCard
-                    summaryRow
-                    streakChip
-                    forecastCard
-                    if let budget = profiles.first?.monthlyBudget, budget > 0, range == .month {
-                        budgetCard(budget: budget)
+                    lensPicker
+                    Group {
+                        switch lens {
+                        case .overview: overviewLens
+                        case .habits:   habitsLens
+                        case .insights: insightsLens
+                        }
                     }
-                    needVsWantSection
-                    whatItCouldveBeenSection
-                    anomaliesSection
-                    flowChart
-                    if regretSummary.count > 0 { dickheadSection }
-                    categoryBreakdown
-                    behaviouralCards
-                    yourVerdictSection
-                    valueForMoneySection
-                    topMerchants
-                    viceTrackerSection
-                    if savingsRate.income > 0 { savingsRateSection }
-                    dayOfWeekChart
-                    subscriptionsSection
-                    wasteMeterSection
-                    periodComparison
-                    recommendationsSection
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal:   .move(edge: .leading).combined(with: .opacity)
+                    ))
                 }
                 .padding()
                 .animation(.snappy, value: range)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: lens)
             }
             .navigationTitle("Analytics")
             .appHeaderToolbar()
@@ -122,6 +121,75 @@ struct AnalyticsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Lens
+
+    /// The Analytics screen grew to ~23 sections in one scroll — too
+    /// much to take in. The lens picker carves them into three
+    /// digestible groups the user can switch between:
+    ///   - **Overview** — the at-a-glance daily driver.
+    ///   - **Habits** — behavioural patterns (vices, day-of-week).
+    ///   - **Insights** — the smart / fun / counterfactual cards.
+    enum Lens: String, CaseIterable, Identifiable {
+        case overview = "Overview"
+        case habits   = "Habits"
+        case insights = "Insights"
+        var id: String { rawValue }
+        var icon: String {
+            switch self {
+            case .overview: "rectangle.3.group.fill"
+            case .habits:   "repeat.circle.fill"
+            case .insights: "sparkles"
+            }
+        }
+    }
+
+    private var lensPicker: some View {
+        Picker("", selection: $lens) {
+            ForEach(Lens.allCases) { l in
+                Label(l.rawValue, systemImage: l.icon).tag(l)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    // MARK: - Lens groups
+
+    @ViewBuilder
+    private var overviewLens: some View {
+        heroCard
+        summaryRow
+        streakChip
+        forecastCard
+        if let budget = profiles.first?.monthlyBudget, budget > 0, range == .month {
+            budgetCard(budget: budget)
+        }
+        flowChart
+        categoryBreakdown
+        periodComparison
+    }
+
+    @ViewBuilder
+    private var habitsLens: some View {
+        needVsWantSection
+        behaviouralCards
+        viceTrackerSection
+        dayOfWeekChart
+    }
+
+    @ViewBuilder
+    private var insightsLens: some View {
+        whatItCouldveBeenSection
+        if regretSummary.count > 0 { dickheadSection }
+        yourVerdictSection
+        anomaliesSection
+        valueForMoneySection
+        topMerchants
+        if savingsRate.income > 0 { savingsRateSection }
+        wasteMeterSection
+        subscriptionsSection
+        recommendationsSection
     }
 
     // MARK: - Range

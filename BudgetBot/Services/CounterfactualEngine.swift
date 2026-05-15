@@ -168,7 +168,10 @@ enum CounterfactualEngine {
         let id = UUID()
         let target: Target
         let monthlySavingsEUR: Decimal
-        let monthsToTarget: Int?    // nil if savings rate is zero
+        /// Months to reach the target at the current savings rate.
+        /// Always present — `savingsComparisons` early-returns when the
+        /// rate is zero, so there is no nil case to model.
+        let monthsToTarget: Int
         let blurb: String
 
         func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -247,7 +250,7 @@ enum CounterfactualEngine {
                 monthsToTarget: monthsToTarget,
                 blurb: savingsBlurb(monthsToTarget: monthsToTarget, target: target)
             )
-        }.sorted { ($0.monthsToTarget ?? .max) < ($1.monthsToTarget ?? .max) }
+        }.sorted { $0.monthsToTarget < $1.monthsToTarget }
     }
 
     // MARK: - Copy
