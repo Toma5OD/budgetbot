@@ -13,16 +13,6 @@ struct HomeView: View {
 
     @Query(filter: #Predicate<Transaction> { $0.confirmed }, sort: \Transaction.date, order: .reverse)
     private var transactions: [Transaction]
-    @Query(filter: #Predicate<Transaction> { $0.confirmed && $0.isRegret },
-           sort: \Transaction.date, order: .reverse)
-    private var regrets: [Transaction]
-    @Query(
-        filter: #Predicate<Transaction> {
-            $0.confirmed && $0.hindsightRating == nil && $0.amount < 0
-        },
-        sort: \Transaction.date, order: .reverse
-    )
-    private var unratedForHindsight: [Transaction]
     @Query(sort: \SavingsGoal.createdAt, order: .reverse) private var goals: [SavingsGoal]
     @Query(filter: #Predicate<Account> { !$0.archived }, sort: \Account.createdAt)
     private var accounts: [Account]
@@ -45,12 +35,11 @@ struct HomeView: View {
                     greeting
                     monthHero
                     quickActions
+                    if needVsWantSplit.total > 0 { needVsWantCard }
+                    if hasRecentSpend { monthlyTrendCard }
                     if !goals.isEmpty { goalsStrip }
-                    if unratedForHindsight.count >= 3 { hindsightBanner }
-                    if !regrets.isEmpty { regretsBanner }
                     accountsStrip
                     if !rules.isEmpty { subscriptionsTeaser }
-                    recentActivity
                 }
                 .padding(.bottom, 28)
             }
@@ -66,7 +55,6 @@ struct HomeView: View {
             }
             .navigationDestination(for: HomeRoute.self) { route in
                 switch route {
-                case .hallOfShame:      HallOfShameView()
                 case .hindsightReview:  HindsightReviewView()
                 case .savingsGoals:     SavingsGoalsView()
                 case .subscriptions:    SubscriptionsView()
@@ -289,65 +277,111 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Hindsight banner
+    // MARK: - Needs vs wants
 
-    private var hindsightBanner: some View {
-        NavigationLink(value: HomeRoute.hindsightReview) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(LinearGradient(
-                            colors: [.yellow, .orange.opacity(0.75)],
-                            startPoint: .top, endPoint: .bottom))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "star.leadinghalf.filled")
-                        .font(.title3.bold())
-                        .foregroundStyle(.white)
+    /// This-month split of essential vs discretionary spend. A simple
+    /// two-segment bar — `discretionary` and `regret` from the metric
+    /// are folded together into "Wants" so the Home version stays
+    /// glanceable (the full three-way breakdown lives in Analytics).
+    private var needVsWantCard: some View {
+        let split = needVsWantSplit
+        let needs = split.necessary
+        let wants = split.discretionary + split.regret
+        let total = needs + wants
+        let needsFrac = total > 0
+            ? NSDecimalNumber(decimal: needs).doubleValue
+                / NSDecimalNumber(decimal: total).doubleValue
+            : 0
+        let needsPct = Int((needsFrac * 100).rounded())
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Needs vs wants · this month")
+                .font(.caption.bold()).tracking(0.5)
+                .foregroundStyle(.secondary)
+
+            GeometryReader { geo in
+                HStack(spacing: 3) {
+                    Capsule().fill(theme.current.tint)
+                        .frame(width: max(0, geo.size.width * needsFrac - 1.5))
+                    Capsule().fill(theme.current.expenseColor)
+                        .frame(width: max(0, geo.size.width * (1 - needsFrac) - 1.5))
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Rate \(unratedForHindsight.count) purchases")
-                        .font(.subheadline.bold())
-                    Text("Quick game — tap or swipe stars. Tightens your analytics.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+            }
+            .frame(height: 12)
+
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 5) {
+                        Circle().fill(theme.current.tint).frame(width: 7, height: 7)
+                        Text("Needs").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Text("\(CurrencyFormatter.string(for: needs, currency: base)) · \(needsPct)%")
+                        .font(.callout.bold().monospacedDigit())
                 }
                 Spacer()
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                VStack(alignment: .trailing, spacing: 1) {
+                    HStack(spacing: 5) {
+                        Text("Wants").font(.caption2).foregroundStyle(.secondary)
+                        Circle().fill(theme.current.expenseColor).frame(width: 7, height: 7)
+                    }
+                    Text("\(CurrencyFormatter.string(for: wants, currency: base)) · \(100 - needsPct)%")
+                        .font(.callout.bold().monospacedDigit())
+                }
             }
-            .padding(14)
-            .themedCard()
-            .padding(.horizontal, 16)
         }
-        .buttonStyle(.pressable)
+        .padding(16)
+        .themedCard()
+        .padding(.horizontal, 16)
     }
 
-    // MARK: - Regrets banner
+    // MARK: - Monthly trend
 
-    private var regretsBanner: some View {
-        let total = regrets.reduce(Decimal(0)) { acc, tx in
-            acc + (-tx.amountInBase(base) { fx.convert($0, from: $1, to: $2) })
-        }
-        return NavigationLink(value: HomeRoute.hallOfShame) {
-            HStack(spacing: 14) {
-                Text(regrets.first?.regretEmoji ?? "🤡")
-                    .font(.system(size: 36))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Hall of Shame")
-                        .font(.subheadline.bold())
-                    Text("\(regrets.count) silly purchase\(regrets.count == 1 ? "" : "s") · \(CurrencyFormatter.string(for: total, currency: base))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+    /// Last six months of total spend as a compact bar strip, current
+    /// month highlighted, with the active-month average alongside.
+    private var monthlyTrendCard: some View {
+        let bars = monthlyBars
+        let maxSpend = max(bars.map(\.spend).max() ?? 1, 1)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("6-month spend")
+                    .font(.caption.bold()).tracking(0.5)
+                    .foregroundStyle(.secondary)
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.tertiary)
+                Text("avg \(CurrencyFormatter.string(for: monthlyAverage, currency: base))")
+                    .font(.caption.bold().monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            .padding(14)
-            .themedCard()
-            .padding(.horizontal, 16)
+            HStack(alignment: .bottom, spacing: 8) {
+                ForEach(bars) { bar in
+                    VStack(spacing: 6) {
+                        Spacer(minLength: 0)
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(bar.isCurrent
+                                  ? AnyShapeStyle(LinearGradient(
+                                      colors: [theme.current.expenseColor,
+                                               theme.current.expenseColor.opacity(0.6)],
+                                      startPoint: .top, endPoint: .bottom))
+                                  : AnyShapeStyle(theme.current.expenseColor.opacity(0.25)))
+                            .frame(height: barHeight(for: bar.spend, max: maxSpend))
+                        Text(bar.label)
+                            .font(.caption2)
+                            .foregroundStyle(bar.isCurrent ? Color.primary : .secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(height: 96)
         }
-        .buttonStyle(.pressable)
+        .padding(16)
+        .themedCard()
+        .padding(.horizontal, 16)
+    }
+
+    private func barHeight(for spend: Decimal, max maxSpend: Decimal) -> CGFloat {
+        let frac = NSDecimalNumber(decimal: spend).doubleValue
+            / NSDecimalNumber(decimal: maxSpend).doubleValue
+        // Floor so even a zero-spend month keeps a visible sliver.
+        return CGFloat(max(0.05, min(1, frac))) * 72
     }
 
     // MARK: - Accounts strip
@@ -443,68 +477,72 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Recent activity
+    // MARK: - Derived data for the new cards
 
-    private var recentActivity: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Recent activity").font(.subheadline.bold())
-                Spacer()
-                Button {
-                    selectedTab = 1   // Activity tab
-                } label: {
-                    Text("All")
-                        .font(.caption.bold())
-                        .foregroundStyle(.tint)
-                }
-                .accessibilityIdentifier("home.allActivity")
-            }
-            .padding(.horizontal, 20)
-
-            if transactions.isEmpty {
-                emptyRecent
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(transactions.prefix(5))) { tx in
-                        NavigationLink(value: tx) {
-                            TransactionRow(tx: tx).padding(.vertical, 10)
-                        }
-                        .buttonStyle(.plain)
-                        if tx.id != transactions.prefix(5).last?.id {
-                            RowDivider()
-                        }
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 4)
-                .themedCard()
-                .padding(.horizontal, 16)
-            }
-        }
+    private func convert(_ amt: Decimal, _ from: String, _ to: String) -> Decimal {
+        fx.convert(amt, from: from, to: to)
     }
 
-    private var emptyRecent: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "tray")
-                .font(.system(size: 28))
-                .foregroundStyle(.tertiary)
-            Text("No transactions yet.")
-                .font(.callout.bold())
-            Text("Tap **Capture** to add your first receipt.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    /// Confirmed transactions dated within the current calendar month.
+    private var thisMonthTransactions: [Transaction] {
+        let startOfMonth = Calendar.current.date(from:
+            Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
+        return transactions.filter { $0.date >= startOfMonth }
+    }
+
+    private var needVsWantSplit: AnalyticsMetrics.NeedVsWant {
+        AnalyticsMetrics.needVsWant(in: thisMonthTransactions, base: base, convert: convert)
+    }
+
+    struct MonthBar: Identifiable {
+        let id = UUID()
+        let label: String       // "Jan"
+        let spend: Decimal      // base-currency expense total
+        let isCurrent: Bool
+    }
+
+    /// Total expense per month for the trailing six calendar months,
+    /// oldest first, current month last.
+    private var monthlyBars: [MonthBar] {
+        let cal = Calendar.current
+        let now = Date()
+        let df = DateFormatter(); df.dateFormat = "MMM"
+        var bars: [MonthBar] = []
+        for offset in stride(from: 5, through: 0, by: -1) {
+            guard let anchor = cal.date(byAdding: .month, value: -offset, to: now),
+                  let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: anchor)),
+                  let monthEnd = cal.date(byAdding: .month, value: 1, to: monthStart)
+            else { continue }
+            let spend = transactions
+                .filter { $0.amount < 0 && $0.date >= monthStart && $0.date < monthEnd }
+                .reduce(Decimal(0)) { acc, tx in
+                    acc + (-tx.amountInBase(base, liveConvert: convert))
+                }
+            bars.append(MonthBar(label: df.string(from: monthStart),
+                                 spend: spend,
+                                 isCurrent: offset == 0))
         }
-        .frame(maxWidth: .infinity)
-        .padding(24)
-        .themedCard()
-        .padding(.horizontal, 16)
+        return bars
+    }
+
+    /// Average over months that actually had spend — so a brand-new
+    /// install's empty months don't drag the figure to near-zero.
+    private var monthlyAverage: Decimal {
+        let active = monthlyBars.filter { $0.spend > 0 }
+        guard !active.isEmpty else { return 0 }
+        return active.reduce(Decimal(0)) { $0 + $1.spend } / Decimal(active.count)
+    }
+
+    /// Gate for the trend card — hides it for a brand-new account with
+    /// no history rather than showing six flat slivers.
+    private var hasRecentSpend: Bool {
+        monthlyBars.contains { $0.spend > 0 }
     }
 }
 
 /// Typed nav destinations off the Home stack (anything that isn't a
 /// raw model). Add cases here when adding new pushable screens.
 enum HomeRoute: Hashable {
-    case hallOfShame
     case hindsightReview
     case savingsGoals
     case subscriptions
