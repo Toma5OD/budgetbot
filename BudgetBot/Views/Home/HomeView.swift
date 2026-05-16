@@ -55,7 +55,7 @@ struct HomeView: View {
             }
             .navigationDestination(for: HomeRoute.self) { route in
                 switch route {
-                case .hindsightReview:  HindsightReviewView()
+                case .funHub:           FunHubView()
                 case .savingsGoals:     SavingsGoalsView()
                 case .subscriptions:    SubscriptionsView()
                 }
@@ -190,11 +190,11 @@ struct HomeView: View {
             ) {
                 selectedTab = 4   // Ask tab index
             }
-            NavigationLink(value: HomeRoute.hindsightReview) {
+            NavigationLink(value: HomeRoute.funHub) {
                 quickActionLabel(
-                    title: "Rate",
-                    subtitle: "Past purchases",
-                    icon: "star.leadinghalf.filled",
+                    title: "Fun",
+                    subtitle: "Games, goals & dreams",
+                    icon: "die.face.5.fill",
                     tint: .orange
                 )
             }
@@ -543,7 +543,7 @@ struct HomeView: View {
 /// Typed nav destinations off the Home stack (anything that isn't a
 /// raw model). Add cases here when adding new pushable screens.
 enum HomeRoute: Hashable {
-    case hindsightReview
+    case funHub
     case savingsGoals
     case subscriptions
 }

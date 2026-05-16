@@ -223,65 +223,11 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
 
-                section("For fun") {
-                    NavigationLink {
-                        DreamsView()
-                    } label: {
-                        SettingsRow("My dreams",
-                                    subtitle: "Engagement ring · house deposit · M3 — translates your spending into things you want.",
-                                    icon: "sparkles",
-                                    tint: .yellow) {
-                            chevronOnly
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings.dreams")
-
-                    RowDivider()
-
-                    NavigationLink {
-                        SavingsGoalsView()
-                    } label: {
-                        SettingsRow("Savings goals",
-                                    subtitle: "Set a target, log contributions, watch the ring fill.",
-                                    icon: "target",
-                                    tint: .green) {
-                            chevronOnly
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings.savingsGoals")
-
-                    RowDivider()
-
-                    NavigationLink {
-                        HallOfShameView()
-                    } label: {
-                        SettingsRow("Hall of Shame",
-                                    subtitle: "Your stupidest purchases, ranked",
-                                    icon: "trophy.fill",
-                                    tint: .pink) {
-                            chevronOnly
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings.hallOfShame")
-
-                    RowDivider()
-
-                    NavigationLink {
-                        HindsightReviewView()
-                    } label: {
-                        SettingsRow("Rate in hindsight",
-                                    subtitle: "Score past purchases 1-5. The data tightens analytics; the swipe deck is the game.",
-                                    icon: "star.leadinghalf.filled",
-                                    tint: .yellow) {
-                            chevronOnly
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings.rateInHindsight")
-                }
+                // The game-y features (Hall of Shame, Rate in
+                // Hindsight, Goals, Dreams) used to live here. They're
+                // *features*, not settings — they now have a proper
+                // home in the Fun hub, reached from the Home tab's
+                // quick-action row.
 
                 section("Appearance") {
                     NavigationLink {
