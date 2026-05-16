@@ -42,20 +42,15 @@ struct AnalyticsView: View {
     }
 
     // Inline drilldown state — replaces the old modal sheet. Tapping a
-    // row, a donut wedge, or a bar sets one of these and reveals
-    // transactions in place below the source.
+    // donut wedge, a category/merchant row, or a bar sets one of these
+    // and reveals transactions in place below the source.
+    //
+    // `expandedCategory` is the single source of truth for the donut:
+    // it drives both the highlighted wedge and the inline drilldown,
+    // whether the selection came from tapping a wedge or a list row.
     @State private var expandedCategory: String?
     @State private var expandedMerchant: String?
     @State private var expandedDay: Date?
-
-    /// Live finger-rotation on the donut. `donutRotation` is what we
-    /// render; `donutDragStartRotation` is the value at the moment a
-    /// drag began so we can do angular deltas without snap-backs.
-    /// `isDraggingDonut` enables a subtle 3D tilt while the user is
-    /// actively spinning it.
-    @State private var donutRotation: Angle = .zero
-    @State private var donutDragStartRotation: Angle = .zero
-    @State private var isDraggingDonut: Bool = false
 
     /// Typed nav destinations off the Analytics stack — anything that
     /// isn't a raw model. Add cases here when adding new pushable
@@ -653,10 +648,10 @@ struct AnalyticsView: View {
                 Text("Where it goes").font(.headline)
                 Spacer()
                 if !byCategory.isEmpty {
-                    Image(systemName: "hand.draw.fill")
+                    Image(systemName: "hand.tap.fill")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                    Text("drag to spin")
+                    Text("tap a slice")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -664,7 +659,7 @@ struct AnalyticsView: View {
             if byCategory.isEmpty {
                 EmptyState(text: "No expense data yet for this range.")
             } else {
-                spinnableDonut
+                donut
                     .frame(height: 260)
 
                 VStack(spacing: 0) {
@@ -679,121 +674,79 @@ struct AnalyticsView: View {
         .themedCard()
     }
 
-    /// The donut wrapped in a GeometryReader so the drag gesture can
-    /// compute the touch angle relative to the centre of the chart.
-    /// Drag = rotation; the 3D tilt kicks in only while the finger is
-    /// down, so at rest the donut sits flat.
+    /// Tappable category donut. `chartAngleSelection` reports the
+    /// tapped wedge; `onChange` maps it to a category and toggles
+    /// `expandedCategory`, which both highlights the wedge and reveals
+    /// the inline drilldown below.
     ///
-    /// The previous version attached the gesture to the Chart itself,
-    /// which has its own internal touch handling for `chartAngleSelection`
-    /// — that swallowed the drag and nothing rotated. The fix layers a
-    /// transparent annular gesture-catcher *above* the chart in a ZStack
-    /// and uses `simultaneousGesture` so the chart's tap-selection still
-    /// works in the centre, while the catcher owns angular drags.
-    private var spinnableDonut: some View {
-        GeometryReader { geo in
-            let centre = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-            ZStack {
-                donut
-                    .rotationEffect(donutRotation, anchor: .center)
-                    .rotation3DEffect(
-                        .degrees(isDraggingDonut ? 14 : (selectedCategory == nil ? 0 : 12)),
-                        axis: (x: 1, y: 0.2, z: 0),
-                        anchor: .center,
-                        perspective: 0.45
-                    )
-                    .shadow(color: .black.opacity(isDraggingDonut ? 0.22 : 0.0),
-                            radius: 18, x: 0, y: 8)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.78),
-                               value: isDraggingDonut)
-                    .animation(.spring(response: 0.45, dampingFraction: 0.8),
-                               value: selectedCategory?.id)
-                    .allowsHitTesting(true)   // taps still hit chartAngleSelection
-
-                // Transparent overlay that captures the angular drag.
-                // Uses `simultaneousGesture` so we don't block the chart's
-                // tap handling for wedge selection.
-                Circle()
-                    .fill(Color.clear)
-                    .contentShape(Circle())
-                    .simultaneousGesture(spinGesture(centre: centre))
-            }
-        }
-    }
-
-    private func spinGesture(centre: CGPoint) -> some Gesture {
-        DragGesture(minimumDistance: 4)
-            .onChanged { value in
-                if !isDraggingDonut {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                        isDraggingDonut = true
-                    }
-                }
-                let current = atan2(value.location.y - centre.y, value.location.x - centre.x)
-                let start   = atan2(value.startLocation.y - centre.y,
-                                    value.startLocation.x - centre.x)
-                // Normalise the delta to [-π, π] so wrapping past the
-                // 12-o'clock mark doesn't snap the wheel halfway round.
-                var delta = current - start
-                while delta >  .pi { delta -= 2 * .pi }
-                while delta < -.pi { delta += 2 * .pi }
-                donutRotation = donutDragStartRotation + .radians(delta)
-            }
-            .onEnded { _ in
-                donutDragStartRotation = donutRotation
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                    isDraggingDonut = false
-                }
-            }
-    }
-
+    /// (An earlier version layered a drag-to-spin gesture over the
+    /// chart. The transparent gesture-catcher swallowed taps — so the
+    /// far more useful tap-to-select stopped working — and the drag
+    /// recogniser tripped "system gesture gate timed out". Both gone:
+    /// the chart now owns its own touches and tap selection just works.)
     private var donut: some View {
         Chart(byCategory) { c in
             SectorMark(
                 angle: .value("Amount", NSDecimalNumber(decimal: c.amount).doubleValue),
-                innerRadius: .ratio(0.55),
-                outerRadius: c.id == selectedCategory?.id ? .ratio(1.05) : .ratio(0.95),
+                innerRadius: .ratio(0.58),
+                outerRadius: c.name == expandedCategory ? .ratio(1.0) : .ratio(0.9),
                 angularInset: 1.5
             )
-            .cornerRadius(4)
+            .cornerRadius(5)
             .foregroundStyle(colorFor(c))
-            .opacity(selectedCategory == nil || selectedCategory?.id == c.id ? 1.0 : 0.32)
+            // Selected wedge stays full-strength; the rest dim back so
+            // the choice pops.
+            .opacity(expandedCategory == nil || expandedCategory == c.name ? 1.0 : 0.28)
         }
         .chartAngleSelection(value: $selectedAngle)
-        .animation(.spring(response: 0.4, dampingFraction: 0.78), value: selectedCategory?.id)
+        .scaleEffect(expandedCategory == nil ? 1.0 : 1.02)
+        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: expandedCategory)
         .chartBackground { _ in
-            VStack(spacing: 4) {
+            ZStack {
                 if let sel = selectedCategory {
-                    Text(sel.name).font(.subheadline.bold())
-                    Text(CurrencyFormatter.string(for: sel.amount, currency: base))
-                        .font(.title3.bold().monospacedDigit())
-                        .foregroundStyle(theme.current.expenseColor)
-                    let pct = NSDecimalNumber(decimal: sel.amount).doubleValue
-                        / NSDecimalNumber(decimal: max(expense, 0.01)).doubleValue
-                    Text("\(Int((pct * 100).rounded()))%")
-                        .font(.caption).foregroundStyle(.secondary)
+                    VStack(spacing: 3) {
+                        Text(sel.name)
+                            .font(.subheadline.bold())
+                            .multilineTextAlignment(.center)
+                        Text(CurrencyFormatter.string(for: sel.amount, currency: base))
+                            .font(.title3.bold().monospacedDigit())
+                            .foregroundStyle(theme.current.expenseColor)
+                        let pct = NSDecimalNumber(decimal: sel.amount).doubleValue
+                            / NSDecimalNumber(decimal: max(expense, 0.01)).doubleValue
+                        Text("\(Int((pct * 100).rounded()))% of spend")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .transition(.scale(scale: 0.5).combined(with: .opacity))
                 } else {
-                    Text("Total").font(.caption).foregroundStyle(.secondary)
-                    AnimatedDecimal(
-                        target: expense, currency: base,
-                        font: .title3.bold().monospacedDigit(),
-                        color: .primary
-                    )
-                    Text("Tap a slice").font(.caption2).foregroundStyle(.tertiary)
+                    VStack(spacing: 3) {
+                        Text("Total").font(.caption).foregroundStyle(.secondary)
+                        AnimatedDecimal(
+                            target: expense, currency: base,
+                            font: .title3.bold().monospacedDigit(),
+                            color: .primary
+                        )
+                        Text("Tap a slice").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
             }
             .padding(.horizontal, 8)
-            .transition(.scale.combined(with: .opacity))
+            .animation(.spring(response: 0.35, dampingFraction: 0.82), value: expandedCategory)
         }
-        .onChange(of: selectedAngle) { _, _ in
-            if let cat = selectedCategory {
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
-                    expandedCategory = expandedCategory == cat.name ? nil : cat.name
-                    expandedMerchant = nil
-                    expandedDay = nil
-                }
+        .onChange(of: selectedAngle) { _, newAngle in
+            // chartAngleSelection hands us a cumulative-amount position.
+            // Map it to a wedge, toggle that category (tapping the same
+            // wedge again clears it), then consume the raw angle.
+            guard let angle = newAngle, let cat = categoryAt(angle: angle) else {
                 selectedAngle = nil
+                return
             }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+                expandedCategory = expandedCategory == cat.name ? nil : cat.name
+                expandedMerchant = nil
+                expandedDay = nil
+            }
+            selectedAngle = nil
         }
     }
 
@@ -828,8 +781,17 @@ struct AnalyticsView: View {
         }
     }
 
+    /// The highlighted wedge — derived purely from `expandedCategory`
+    /// so a selection made by tapping a *list row* highlights the
+    /// donut too, and vice versa. One source of truth.
     private var selectedCategory: CatTotal? {
-        guard let angle = selectedAngle else { return nil }
+        guard let name = expandedCategory else { return nil }
+        return byCategory.first { $0.name == name }
+    }
+
+    /// Maps a `chartAngleSelection` value (a cumulative-amount position
+    /// along the donut) back to the category whose wedge contains it.
+    private func categoryAt(angle: Double) -> CatTotal? {
         var cumulative: Double = 0
         let total = byCategory.reduce(0) { $0 + NSDecimalNumber(decimal: $1.amount).doubleValue }
         guard total > 0 else { return nil }

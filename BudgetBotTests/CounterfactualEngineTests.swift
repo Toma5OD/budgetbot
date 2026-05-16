@@ -157,4 +157,37 @@ final class CounterfactualEngineTests: XCTestCase {
         XCTAssertEqual(result.first?.monthsToTarget, 4,
                        "1000 / 250 = 4 months")
     }
+
+    /// Regression: target names legitimately contain "%" — the built-in
+    /// catalogue has "10% deposit on a €450k 3-bed". The multi-year
+    /// blurb branch used to interpolate the name straight into a
+    /// `String(format:)` template, so the "%" was parsed as a bogus
+    /// specifier and crashed. A slow savings rate against the big
+    /// catalogue items forces that branch.
+    func test_savingsBlurb_doesNotCrashOnPercentInTargetName() {
+        let result = CounterfactualEngine.savingsComparisons(
+            monthlySavingsEUR: 300,                 // slow → years branch
+            dreams: [],
+            catalogue: ReferencePurchase.all
+        )
+        let multiYear = result.first { $0.monthsToTarget >= 36 }
+        XCTAssertNotNil(multiYear, "Big catalogue items should land in the years branch")
+        let blurb = multiYear?.blurb ?? ""
+        XCTAssertTrue(blurb.contains("years from"))
+        XCTAssertFalse(blurb.isEmpty)
+    }
+
+    func test_viceBlurb_doesNotCrashOnPercentInTargetName() {
+        // The "% of" branch + percent-named targets together.
+        let pool = CounterfactualEngine.VicePool(
+            id: "alcohol", label: "alcohol", emoji: "🍻",
+            monthlyEUR: 200, annualEUR: 2400
+        )
+        let comparisons = CounterfactualEngine.viceComparisons(
+            pools: [pool], dreams: [], catalogue: ReferencePurchase.all
+        )
+        for c in comparisons {
+            XCTAssertFalse(c.blurb.isEmpty)
+        }
+    }
 }

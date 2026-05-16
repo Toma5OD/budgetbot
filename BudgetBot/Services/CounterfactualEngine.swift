@@ -288,8 +288,14 @@ enum CounterfactualEngine {
         } else if monthsToTarget < 36 {
             return "About \(monthsToTarget) months from \(target.name) at your current savings rate."
         } else {
+            // Format the number on its own — never interpolate
+            // `target.name` into a `String(format:)` template. Target
+            // names legitimately contain "%" ("10% deposit on a €450k
+            // 3-bed"), which `String(format:)` would parse as a bogus
+            // format specifier and crash on the argument-type mismatch.
             let years = Double(monthsToTarget) / 12
-            return String(format: "About %.1f years from \(target.name) at your current pace.", years)
+            let yearsText = String(format: "%.1f", years)
+            return "About \(yearsText) years from \(target.name) at your current pace."
         }
     }
 
