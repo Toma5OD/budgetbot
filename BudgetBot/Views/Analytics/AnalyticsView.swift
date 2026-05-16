@@ -2168,9 +2168,13 @@ private struct SubscriptionRow: View {
     var onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                .font(.title2).foregroundStyle(.tint)
+        let style = SubscriptionStyle.resolve(
+            name: rule.displayName, categoryName: rule.category?.name)
+        return HStack(spacing: 12) {
+            Image(systemName: style.symbol)
+                .font(.title2)
+                .foregroundStyle(style.tint)
+                .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(rule.displayName).font(.callout.bold())
                 HStack(spacing: 6) {

@@ -101,15 +101,18 @@ struct SubscriptionsView: View {
 
     private func subscriptionRow(_ rule: RecurringRule) -> some View {
         let stats = stats(for: rule)
+        let style = SubscriptionStyle.resolve(
+            name: rule.displayName, categoryName: rule.category?.name)
         return HStack(spacing: 12) {
             ZStack {
                 Circle()
                     .fill(LinearGradient(
-                        colors: [theme.current.tint, theme.current.tint.opacity(0.55)],
-                        startPoint: .top, endPoint: .bottom
+                        colors: [style.tint, style.tint.opacity(0.6)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                     .frame(width: 40, height: 40)
-                Image(systemName: "arrow.triangle.2.circlepath")
+                Image(systemName: style.symbol)
+                    .font(.callout)
                     .foregroundStyle(.white)
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -241,11 +244,20 @@ struct SubscriptionDetailView: View {
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let style = SubscriptionStyle.resolve(
+            name: rule.displayName, categoryName: rule.category?.name)
+        return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                    .font(.title)
-                    .foregroundStyle(theme.current.tint)
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [style.tint, style.tint.opacity(0.6)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: style.symbol)
+                        .font(.title3)
+                        .foregroundStyle(.white)
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(rule.displayName).font(.headline)
                     Text("\(rule.cadence.displayName) · seen \(rule.occurrences)×")
