@@ -1,20 +1,18 @@
 import SwiftUI
 import SwiftData
 
-/// The "Fun" hub — a real, discoverable home for BudgetBot's playful /
-/// game-y features, rather than burying them in Settings (Settings is
-/// for configuration; a swipe-to-rate game and a Hall of Shame are
-/// features). Reached from the Home quick-action row.
+/// The "Fun" hub — a real, discoverable home for BudgetBot's playful,
+/// game-y *reflection* features. Deliberately scoped: this is the
+/// gamified-self-awareness corner, not a junk drawer.
 ///
-/// Collects four things:
 ///   - **Rate in Hindsight** — the swipe-deck rating game.
 ///   - **Hall of Shame** — your worst purchases, ranked.
-///   - **Savings Goals** — funded targets with progress rings.
-///   - **My Dreams** — reference prices that power the "what it
-///     could've been" counterfactuals.
 ///
-/// Each card carries a live count badge so the hub itself tells you
-/// where there's something to do.
+/// Savings Goals and Dreams used to live here too — that was an
+/// information-architecture mistake. They're forward-looking
+/// *planning*, not reflection: Goals now sit on the Home dashboard
+/// (where you glance at progress) and Dreams sit with the
+/// counterfactuals in Analytics (the feature that consumes them).
 struct FunHubView: View {
     @Environment(ThemeManager.self) private var theme
 
@@ -27,9 +25,6 @@ struct FunHubView: View {
 
     @Query(filter: #Predicate<Transaction> { $0.confirmed && $0.isRegret })
     private var regrets: [Transaction]
-
-    @Query private var goals: [SavingsGoal]
-    @Query private var dreams: [UserDream]
 
     var body: some View {
         ScrollView {
@@ -51,22 +46,6 @@ struct FunHubView: View {
                     tint: .pink,
                     badge: regrets.isEmpty ? nil : "\(regrets.count)"
                 ) { HallOfShameView() }
-
-                hubCard(
-                    title: "Savings Goals",
-                    subtitle: "Set a target, log contributions, watch the ring fill.",
-                    icon: "target",
-                    tint: .green,
-                    badge: goals.isEmpty ? nil : "\(goals.count)"
-                ) { SavingsGoalsView() }
-
-                hubCard(
-                    title: "My Dreams",
-                    subtitle: "Ring, house deposit, M3 — what your spending could've been.",
-                    icon: "sparkles",
-                    tint: .yellow,
-                    badge: dreams.isEmpty ? nil : "\(dreams.count)"
-                ) { DreamsView() }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

@@ -37,7 +37,7 @@ struct HomeView: View {
                     quickActions
                     if needVsWantSplit.total > 0 { needVsWantCard }
                     if hasRecentSpend { monthlyTrendCard }
-                    if !goals.isEmpty { goalsStrip }
+                    goalsStrip
                     accountsStrip
                     if !rules.isEmpty { subscriptionsTeaser }
                 }
@@ -193,7 +193,7 @@ struct HomeView: View {
             NavigationLink(value: HomeRoute.funHub) {
                 quickActionLabel(
                     title: "Fun",
-                    subtitle: "Games, goals & dreams",
+                    subtitle: "Rate & roast yourself",
                     icon: "die.face.5.fill",
                     tint: .orange
                 )
@@ -245,34 +245,63 @@ struct HomeView: View {
 
     // MARK: - Goals strip
 
+    /// Always present so Savings Goals has a stable home — when there
+    /// are no goals yet it's a slim "set your first goal" call to
+    /// action; once there are goals it's the horizontal progress strip.
     private var goalsStrip: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 NavigationLink(value: HomeRoute.savingsGoals) {
                     HStack(spacing: 4) {
-                        Text("Goals").font(.subheadline.bold())
+                        Text("Savings goals").font(.subheadline.bold())
                         Image(systemName: "chevron.right")
                             .font(.caption2).foregroundStyle(.tertiary)
                     }
                 }
                 .buttonStyle(.plain)
                 Spacer()
-                Text("\(goals.count)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.tertiary)
+                if !goals.isEmpty {
+                    Text("\(goals.count)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
             }
             .padding(.horizontal, 20)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(goals.prefix(6)) { goal in
-                        NavigationLink(value: goal) {
-                            GoalTile(goal: goal, theme: theme.current)
+            if goals.isEmpty {
+                NavigationLink(value: HomeRoute.savingsGoals) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "target")
+                            .font(.title2)
+                            .foregroundStyle(theme.current.tint)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Set your first goal").font(.subheadline.bold())
+                            Text("A trip, a deposit, a new bike — track it with a progress ring.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
                         }
-                        .buttonStyle(.pressable)
+                        Spacer()
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(theme.current.tint)
                     }
+                    .padding(14)
+                    .themedCard()
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
+                .buttonStyle(.pressable)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(goals.prefix(6)) { goal in
+                            NavigationLink(value: goal) {
+                                GoalTile(goal: goal, theme: theme.current)
+                            }
+                            .buttonStyle(.pressable)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
             }
         }
     }
