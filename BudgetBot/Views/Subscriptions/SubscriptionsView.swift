@@ -101,20 +101,10 @@ struct SubscriptionsView: View {
 
     private func subscriptionRow(_ rule: RecurringRule) -> some View {
         let stats = stats(for: rule)
-        let style = SubscriptionStyle.resolve(
-            name: rule.displayName, categoryName: rule.category?.name)
         return HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(
-                        colors: [style.tint, style.tint.opacity(0.6)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ))
-                    .frame(width: 40, height: 40)
-                Image(systemName: style.symbol)
-                    .font(.callout)
-                    .foregroundStyle(.white)
-            }
+            BrandLogoView(subscriptionName: rule.displayName,
+                          categoryName: rule.category?.name,
+                          size: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(rule.displayName).font(.callout.bold())
                 HStack(spacing: 6) {
@@ -244,20 +234,11 @@ struct SubscriptionDetailView: View {
     }
 
     private var hero: some View {
-        let style = SubscriptionStyle.resolve(
-            name: rule.displayName, categoryName: rule.category?.name)
-        return VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                ZStack {
-                    Circle()
-                        .fill(LinearGradient(
-                            colors: [style.tint, style.tint.opacity(0.6)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: style.symbol)
-                        .font(.title3)
-                        .foregroundStyle(.white)
-                }
+                BrandLogoView(subscriptionName: rule.displayName,
+                              categoryName: rule.category?.name,
+                              size: 44)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(rule.displayName).font(.headline)
                     Text("\(rule.cadence.displayName) · seen \(rule.occurrences)×")

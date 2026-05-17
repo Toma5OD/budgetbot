@@ -2168,13 +2168,10 @@ private struct SubscriptionRow: View {
     var onDismiss: () -> Void
 
     var body: some View {
-        let style = SubscriptionStyle.resolve(
-            name: rule.displayName, categoryName: rule.category?.name)
-        return HStack(spacing: 12) {
-            Image(systemName: style.symbol)
-                .font(.title2)
-                .foregroundStyle(style.tint)
-                .frame(width: 28)
+        HStack(spacing: 12) {
+            BrandLogoView(subscriptionName: rule.displayName,
+                          categoryName: rule.category?.name,
+                          size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(rule.displayName).font(.callout.bold())
                 HStack(spacing: 6) {
