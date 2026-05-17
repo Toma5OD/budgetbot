@@ -102,7 +102,7 @@ struct SubscriptionsView: View {
     private func subscriptionRow(_ rule: RecurringRule) -> some View {
         let stats = stats(for: rule)
         return HStack(spacing: 12) {
-            BrandLogoView(subscriptionName: rule.displayName,
+            BrandLogoView(name: rule.displayName,
                           categoryName: rule.category?.name,
                           size: 40)
             VStack(alignment: .leading, spacing: 2) {
@@ -236,7 +236,7 @@ struct SubscriptionDetailView: View {
     private var hero: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                BrandLogoView(subscriptionName: rule.displayName,
+                BrandLogoView(name: rule.displayName,
                               categoryName: rule.category?.name,
                               size: 44)
                 VStack(alignment: .leading, spacing: 1) {

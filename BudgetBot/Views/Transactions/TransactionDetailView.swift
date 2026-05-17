@@ -22,7 +22,12 @@ struct TransactionDetailView: View {
             }
 
             Section("Details") {
-                TextField("Payee", text: $tx.payee)
+                HStack(spacing: 12) {
+                    BrandLogoView(name: tx.payee,
+                                  fallbackEmoji: tx.category?.emoji ?? "🧾",
+                                  size: 30)
+                    TextField("Payee", text: $tx.payee)
+                }
                 DatePicker("Date", selection: $tx.date, displayedComponents: [.date, .hourAndMinute])
                 Picker("Account", selection: $tx.account) {
                     Text("None").tag(Account?.none)

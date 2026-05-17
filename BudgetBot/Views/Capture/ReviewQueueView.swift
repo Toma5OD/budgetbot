@@ -367,7 +367,8 @@ private struct DraftReviewCard: View {
                 .padding(.top, 8)
 
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
+                HStack(spacing: 12) {
+                    BrandLogoView(name: draft.payee, fallbackEmoji: "🧾", size: 40)
                     Text(draft.payee)
                         .font(theme.current.headingFont(.title2))
                     Spacer()

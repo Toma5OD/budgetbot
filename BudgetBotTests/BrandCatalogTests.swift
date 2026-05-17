@@ -45,4 +45,23 @@ final class BrandCatalogTests: XCTestCase {
                           "expected catalogue entry: \(id)")
         }
     }
+
+    func test_matchesEverydayMerchants() {
+        // Demo-data-style payees carry branch suffixes / casing noise.
+        XCTAssertEqual(BrandCatalog.match(name: "Tesco Express Camden")?.id, "tesco")
+        XCTAssertEqual(BrandCatalog.match(name: "TESCO EXTRA LIFFEY VALLEY")?.id, "tesco")
+        XCTAssertEqual(BrandCatalog.match(name: "Boots Pharmacy Henry St")?.id, "boots")
+        XCTAssertEqual(BrandCatalog.match(name: "Penneys Mary St")?.id, "penneys")
+        XCTAssertEqual(BrandCatalog.match(name: "Domino's Pizza — Camden St")?.id, "dominos")
+        XCTAssertEqual(BrandCatalog.match(name: "Free Now Dublin")?.id, "freenow")
+        XCTAssertEqual(BrandCatalog.match(name: "Circle K")?.id, "circlek")
+    }
+
+    func test_longerKeysWinOverGenericOnes() {
+        // "Applegreen" must not be swallowed by an Apple* subscription
+        // key, and "Amazon Prime" must beat the bare "amazon" merchant.
+        XCTAssertEqual(BrandCatalog.match(name: "Applegreen Stores")?.id, "applegreen")
+        XCTAssertEqual(BrandCatalog.match(name: "Amazon Prime")?.id, "primevideo")
+        XCTAssertEqual(BrandCatalog.match(name: "Amazon UK")?.id, "amazon")
+    }
 }

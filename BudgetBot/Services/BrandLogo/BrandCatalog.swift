@@ -2,10 +2,11 @@ import Foundation
 
 /// One known brand. Pure metadata — no image bytes.
 ///
-///   - `matchKeys`  lowercased substrings; if a subscription's display
+///   - `matchKeys`  lowercased substrings; if a payee or subscription
 ///     name contains one, this brand matches.
 ///   - `domain`     the brand's web domain. The real logo is fetched
-///     by domain from the logo API and cached — see `BrandLogoStore`.
+///     by domain from the favicon service and cached — see
+///     `BrandLogoStore`.
 struct Brand: Identifiable, Hashable {
     let id: String
     let matchKeys: [String]
@@ -13,12 +14,17 @@ struct Brand: Identifiable, Hashable {
     let domain: String
 }
 
-/// Subscription-name → brand lookup. Every entry carries a `domain`;
-/// the real full-colour logo is fetched from it once and cached, so
-/// there's nothing to bundle and no script to run.
+/// Brand lookup for subscriptions *and* everyday merchants. Every entry
+/// carries a `domain`; the real full-colour logo is fetched from it once
+/// and cached, so there's nothing to bundle and no script to run.
+///
+/// Match keys are deliberately Ireland-leaning (they track what the demo
+/// seeder and most users here actually spend on) — add a region-aware
+/// variant if/when the app goes beyond IE/UK.
 enum BrandCatalog {
 
     static let all: [Brand] = [
+        // ══ Subscriptions ════════════════════════════════════════
         // ── Streaming video ──────────────────────────────────────
         Brand(id: "netflix",       matchKeys: ["netflix"],
               displayName: "Netflix", domain: "netflix.com"),
@@ -119,11 +125,165 @@ enum BrandCatalog {
 
         // ── Fitness ──────────────────────────────────────────────
         Brand(id: "flyefit",       matchKeys: ["flyefit"],
-              displayName: "FlyeFit", domain: "flyefit.ie")
+              displayName: "FlyeFit", domain: "flyefit.ie"),
+
+        // ══ Everyday merchants ═══════════════════════════════════
+        // ── Groceries / supermarkets ─────────────────────────────
+        Brand(id: "tesco",        matchKeys: ["tesco"],
+              displayName: "Tesco", domain: "tesco.ie"),
+        Brand(id: "supervalu",    matchKeys: ["supervalu"],
+              displayName: "SuperValu", domain: "supervalu.ie"),
+        Brand(id: "dunnesstores", matchKeys: ["dunnes"],
+              displayName: "Dunnes Stores", domain: "dunnesstores.com"),
+        Brand(id: "lidl",         matchKeys: ["lidl"],
+              displayName: "Lidl", domain: "lidl.ie"),
+        Brand(id: "aldi",         matchKeys: ["aldi"],
+              displayName: "Aldi", domain: "aldi.ie"),
+        Brand(id: "centra",       matchKeys: ["centra"],
+              displayName: "Centra", domain: "centra.ie"),
+        Brand(id: "spar",         matchKeys: ["spar"],
+              displayName: "Spar", domain: "spar.ie"),
+        Brand(id: "daybreak",     matchKeys: ["daybreak"],
+              displayName: "Daybreak", domain: "daybreak.ie"),
+        Brand(id: "marksspencer", matchKeys: ["marks & spencer", "marks and spencer", "m&s"],
+              displayName: "Marks & Spencer", domain: "marksandspencer.com"),
+
+        // ── Fuel / forecourt ─────────────────────────────────────
+        Brand(id: "circlek",      matchKeys: ["circle k", "circlek"],
+              displayName: "Circle K", domain: "circlek.ie"),
+        Brand(id: "maxol",        matchKeys: ["maxol"],
+              displayName: "Maxol", domain: "maxol.ie"),
+        Brand(id: "applegreen",   matchKeys: ["applegreen"],
+              displayName: "Applegreen", domain: "applegreen.com"),
+
+        // ── Pharmacy / health ────────────────────────────────────
+        Brand(id: "boots",        matchKeys: ["boots"],
+              displayName: "Boots", domain: "boots.ie"),
+        Brand(id: "specsavers",   matchKeys: ["specsavers"],
+              displayName: "Specsavers", domain: "specsavers.ie"),
+
+        // ── Fast food / delivery ─────────────────────────────────
+        Brand(id: "mcdonalds",    matchKeys: ["mcdonald"],
+              displayName: "McDonald's", domain: "mcdonalds.com"),
+        Brand(id: "burgerking",   matchKeys: ["burger king"],
+              displayName: "Burger King", domain: "burgerking.com"),
+        Brand(id: "kfc",          matchKeys: ["kfc"],
+              displayName: "KFC", domain: "kfc.ie"),
+        Brand(id: "subway",       matchKeys: ["subway"],
+              displayName: "Subway", domain: "subway.com"),
+        Brand(id: "supermacs",    matchKeys: ["supermac"],
+              displayName: "Supermac's", domain: "supermacs.ie"),
+        Brand(id: "dominos",      matchKeys: ["domino"],
+              displayName: "Domino's", domain: "dominos.ie"),
+        Brand(id: "apachepizza",  matchKeys: ["apache pizza"],
+              displayName: "Apache Pizza", domain: "apache.ie"),
+        Brand(id: "boojum",       matchKeys: ["boojum"],
+              displayName: "Boojum", domain: "boojummex.com"),
+        Brand(id: "fiveguys",     matchKeys: ["five guys"],
+              displayName: "Five Guys", domain: "fiveguys.com"),
+        Brand(id: "eddierockets", matchKeys: ["eddie rocket"],
+              displayName: "Eddie Rocket's", domain: "eddierockets.ie"),
+        Brand(id: "justeat",      matchKeys: ["just eat"],
+              displayName: "Just Eat", domain: "just-eat.ie"),
+        Brand(id: "deliveroo",    matchKeys: ["deliveroo"],
+              displayName: "Deliveroo", domain: "deliveroo.ie"),
+
+        // ── Coffee ───────────────────────────────────────────────
+        Brand(id: "starbucks",    matchKeys: ["starbucks"],
+              displayName: "Starbucks", domain: "starbucks.com"),
+        Brand(id: "costa",        matchKeys: ["costa"],
+              displayName: "Costa Coffee", domain: "costa.co.uk"),
+        Brand(id: "insomnia",     matchKeys: ["insomnia"],
+              displayName: "Insomnia", domain: "insomnia.ie"),
+        Brand(id: "butlers",      matchKeys: ["butlers"],
+              displayName: "Butlers", domain: "butlerschocolates.com"),
+        Brand(id: "javarepublic", matchKeys: ["java republic"],
+              displayName: "Java Republic", domain: "javarepublic.com"),
+
+        // ── Retail / department / electronics ────────────────────
+        Brand(id: "penneys",      matchKeys: ["penneys", "primark"],
+              displayName: "Penneys", domain: "primark.com"),
+        Brand(id: "brownthomas",  matchKeys: ["brown thomas"],
+              displayName: "Brown Thomas", domain: "brownthomas.com"),
+        Brand(id: "arnotts",      matchKeys: ["arnotts"],
+              displayName: "Arnotts", domain: "arnotts.ie"),
+        Brand(id: "currys",       matchKeys: ["currys"],
+              displayName: "Currys", domain: "currys.ie"),
+        Brand(id: "harveynorman", matchKeys: ["harvey norman"],
+              displayName: "Harvey Norman", domain: "harveynorman.ie"),
+        Brand(id: "argos",        matchKeys: ["argos"],
+              displayName: "Argos", domain: "argos.ie"),
+        Brand(id: "smyths",       matchKeys: ["smyths"],
+              displayName: "Smyths Toys", domain: "smythstoys.com"),
+        Brand(id: "ikea",         matchKeys: ["ikea"],
+              displayName: "IKEA", domain: "ikea.com"),
+        Brand(id: "bandq",        matchKeys: ["b&q", "b & q"],
+              displayName: "B&Q", domain: "diy.com"),
+        Brand(id: "woodies",      matchKeys: ["woodie"],
+              displayName: "Woodie's", domain: "woodies.ie"),
+        Brand(id: "easons",       matchKeys: ["eason"],
+              displayName: "Easons", domain: "easons.com"),
+        Brand(id: "tkmaxx",       matchKeys: ["tk maxx", "tkmaxx"],
+              displayName: "TK Maxx", domain: "tkmaxx.com"),
+        Brand(id: "hm",           matchKeys: ["h&m"],
+              displayName: "H&M", domain: "hm.com"),
+        Brand(id: "zara",         matchKeys: ["zara"],
+              displayName: "Zara", domain: "zara.com"),
+        Brand(id: "asos",         matchKeys: ["asos"],
+              displayName: "ASOS", domain: "asos.com"),
+        Brand(id: "decathlon",    matchKeys: ["decathlon"],
+              displayName: "Decathlon", domain: "decathlon.ie"),
+
+        // ── Transport / travel ───────────────────────────────────
+        Brand(id: "aerlingus",    matchKeys: ["aer lingus"],
+              displayName: "Aer Lingus", domain: "aerlingus.com"),
+        Brand(id: "ryanair",      matchKeys: ["ryanair"],
+              displayName: "Ryanair", domain: "ryanair.com"),
+        Brand(id: "freenow",      matchKeys: ["free now"],
+              displayName: "Free Now", domain: "free-now.com"),
+        Brand(id: "leapcard",     matchKeys: ["leap card"],
+              displayName: "Leap Card", domain: "leapcard.ie"),
+        Brand(id: "irishrail",    matchKeys: ["irish rail", "iarnród"],
+              displayName: "Irish Rail", domain: "irishrail.ie"),
+        Brand(id: "dublinbus",    matchKeys: ["dublin bus"],
+              displayName: "Dublin Bus", domain: "dublinbus.ie"),
+        Brand(id: "uber",         matchKeys: ["uber"],
+              displayName: "Uber", domain: "uber.com"),
+
+        // ── Online / services ────────────────────────────────────
+        Brand(id: "amazon",       matchKeys: ["amazon"],
+              displayName: "Amazon", domain: "amazon.co.uk"),
+        Brand(id: "paypal",       matchKeys: ["paypal"],
+              displayName: "PayPal", domain: "paypal.com"),
+        Brand(id: "ebay",         matchKeys: ["ebay"],
+              displayName: "eBay", domain: "ebay.ie"),
+        Brand(id: "eventbrite",   matchKeys: ["eventbrite"],
+              displayName: "Eventbrite", domain: "eventbrite.ie"),
+        Brand(id: "udemy",        matchKeys: ["udemy"],
+              displayName: "Udemy", domain: "udemy.com"),
+        Brand(id: "paddypower",   matchKeys: ["paddy power"],
+              displayName: "Paddy Power", domain: "paddypower.com"),
+        Brand(id: "anpost",       matchKeys: ["an post"],
+              displayName: "An Post", domain: "anpost.com"),
+
+        // ── Banking ──────────────────────────────────────────────
+        Brand(id: "aib",          matchKeys: ["aib"],
+              displayName: "AIB", domain: "aib.ie"),
+        Brand(id: "bankofireland", matchKeys: ["bank of ireland"],
+              displayName: "Bank of Ireland", domain: "bankofireland.com"),
+        Brand(id: "revolut",      matchKeys: ["revolut"],
+              displayName: "Revolut", domain: "revolut.com"),
+
+        // ── Charity / drink ──────────────────────────────────────
+        Brand(id: "trocaire",     matchKeys: ["trócaire", "trocaire"],
+              displayName: "Trócaire", domain: "trocaire.org"),
+        Brand(id: "eightdegrees", matchKeys: ["eight degrees"],
+              displayName: "Eight Degrees Brewing", domain: "eightdegrees.ie")
     ]
 
     /// First brand whose match keys appear in `name`. Longer keys are
-    /// tried first so a specific phrase wins over a generic substring.
+    /// tried first so a specific phrase ("amazon prime") wins over a
+    /// generic substring ("amazon").
     static func match(name: String) -> Brand? {
         let n = name.lowercased()
         return all

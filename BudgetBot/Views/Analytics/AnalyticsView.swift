@@ -2169,7 +2169,7 @@ private struct SubscriptionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            BrandLogoView(subscriptionName: rule.displayName,
+            BrandLogoView(name: rule.displayName,
                           categoryName: rule.category?.name,
                           size: 36)
             VStack(alignment: .leading, spacing: 2) {

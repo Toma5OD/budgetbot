@@ -322,7 +322,10 @@ private struct ReviewCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(spacing: 12) {
+                BrandLogoView(name: tx.payee,
+                              fallbackEmoji: tx.category?.emoji ?? "🧾",
+                              size: 40)
                 Text(tx.payee)
                     .font(.title2.bold())
                     .lineLimit(2)

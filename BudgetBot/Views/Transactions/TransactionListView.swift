@@ -210,7 +210,7 @@ struct TransactionRow: View {
     let tx: Transaction
     var body: some View {
         HStack(spacing: 12) {
-            Text(glyph).font(.title2)
+            BrandLogoView(name: tx.payee, fallbackEmoji: glyph, size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(tx.payee).font(.body)
                 HStack(spacing: 4) {
@@ -251,8 +251,9 @@ struct TransactionRow: View {
 private struct ItemRowView: View {
     let row: TransactionListView.ItemRow
     var body: some View {
-        HStack {
-            Text(row.categoryEmoji).font(.title3)
+        HStack(spacing: 12) {
+            BrandLogoView(name: row.transaction.payee,
+                          fallbackEmoji: row.categoryEmoji, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.description).font(.body).lineLimit(1)
                 HStack(spacing: 4) {
