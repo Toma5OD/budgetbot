@@ -1,38 +1,45 @@
 # Brand Logos
 
-How subscription rows get real brand logos — light on data, clean on
-licensing.
+How subscription rows get real brand logos — free, light on data,
+clean on licensing.
 
 ## Two tiers
 
 `BrandLogoView` resolves a subscription's icon through two tiers:
 
-1. **Real logo** — the brand's full-colour logo, fetched once by
-   domain from a logo API and cached on disk. Instant and offline on
-   every later view.
+1. **Real logo** — the brand's own icon, fetched once by domain and
+   cached on disk. Instant and offline on every later view.
 2. **SF Symbol** — `SubscriptionStyle`'s category glyph. The fallback
-   when there's no API token, no network on first sight, or the brand
-   isn't in `BrandCatalog`.
+   while a logo is still loading, when offline on first sight, or when
+   the brand isn't in `BrandCatalog`.
 
-The app builds and runs correctly with no token — it simply lives on
-tier 2 until a token is set.
+## Where the logos come from
 
-## Enabling real logos — the token
+Every brand publishes an icon on its own website — its favicon.
+`BrandLogoStore` fetches that icon by domain from a free public
+favicon endpoint (Google's `s2/favicons`):
 
-Logos come from a logo API ([Logo.dev](https://logo.dev) by default).
-Getting a key is a free, open process: create an account and copy the
-**publishable** token. It is not a secret — publishable logo-API
-tokens are designed to ship in client apps.
-
-Set it into the `BudgetBot.logoAPIToken` UserDefaults key:
-
-```swift
-BrandLogoStore.logoAPIToken = "pk_your_token_here"
+```
+https://www.google.com/s2/favicons?domain=netflix.com&sz=128
 ```
 
-`BrandLogoStore.makeRequest` targets `https://img.logo.dev/<domain>`.
-Brandfetch's CDN has the same domain-keyed shape — swap the host there
-if you change providers.
+- **Free.** No token, no account, no API plan, no quota a budgeting
+  app would ever reach. Nothing to pay for, now or at scale.
+- **Real.** A favicon *is* the brand's own published mark — the real
+  Netflix / Spotify / Three icon, not a redrawn stand-in.
+- **Right shape.** Favicons are square icons, which is exactly what a
+  circular badge needs (a wide wordmark wouldn't fit anyway).
+
+DuckDuckGo's `https://icons.duckduckgo.com/ip3/<domain>.ico` is a
+drop-in alternative — swap the host in `BrandLogoStore.makeRequest`.
+
+## Why this is fine
+
+We don't bundle, host, scrape, or redistribute anything. Each icon is
+fetched at runtime from a public endpoint and shown to label a
+subscription the user actually pays for — identifying (nominative)
+use, the same basis every subscription tracker relies on. Brand names
+and logos remain trademarks of their owners.
 
 ## Why a disk cache, not the database
 
@@ -48,15 +55,6 @@ So fetched logos live in `BrandLogos/` inside the App Group container
 `Caches/`, and the widget extension can read it. Fetched once, then
 zero network — and if a logo is ever lost it just re-fetches. ~10 KB
 per logo; a user's long-tail set stays well under 1 MB.
-
-## Licensing
-
-Logo APIs license logo *delivery* for exactly this purpose, so the
-provider has handled sourcing. Brand names and logos remain trademarks
-of their owners; showing a logo to label a service the user actually
-subscribes to is identifying (nominative) use — the same basis every
-subscription-tracker app relies on. We deliberately do **not** scrape
-or hand-draw logos.
 
 ## Adding a brand
 

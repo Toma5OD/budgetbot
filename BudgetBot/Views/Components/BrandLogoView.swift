@@ -2,13 +2,12 @@ import SwiftUI
 
 /// Circular brand badge for a subscription. Two tiers:
 ///
-///   1. **Real logo** — the brand's full-colour logo, fetched once by
-///      domain from the logo API and cached to disk (App Group
+///   1. **Real logo** — the brand's own icon, fetched once by domain
+///      from a free favicon service and cached to disk (App Group
 ///      container), so it's instant and offline on every later view.
-///      Needs a logo-API token set once — see `BrandLogoStore`.
 ///   2. **SF Symbol** — `SubscriptionStyle`'s category glyph. The
-///      fallback when there's no token, no network on first sight, or
-///      the brand isn't in the catalogue.
+///      fallback while the logo is still loading, when offline on
+///      first sight, or when the brand isn't in `BrandCatalog`.
 struct BrandLogoView: View {
     let subscriptionName: String
     var categoryName: String? = nil

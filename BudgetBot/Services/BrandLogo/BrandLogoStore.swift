@@ -4,6 +4,12 @@ import UIKit
 /// Persistent store for fetched brand logos — the single source of
 /// real, full-colour subscription logos.
 ///
+/// Logos come from each brand's own favicon, served by a free public
+/// favicon endpoint. No token, no account, no quota worth worrying
+/// about, nothing to pay for. A favicon *is* the brand's own published
+/// icon, so the result is the real Netflix / Spotify / Three mark —
+/// not a stand-in.
+///
 /// Caching design — "store them once so they load fast and don't
 /// waste data":
 ///   - **Disk**: a logo is written to a `BrandLogos/` folder in the
@@ -17,26 +23,7 @@ import UIKit
 ///     widget extension can read it too.
 ///   - **Memory**: an `NSCache` sits on top so we don't re-decode a
 ///     PNG every time a row scrolls past.
-///
-/// Fetching is gated on a free logo-API token (`logoAPIToken`). With
-/// no token set the store is inert and `BrandLogoView` shows its SF
-/// Symbol fallback.
 enum BrandLogoStore {
-
-    // MARK: - API configuration
-
-    /// UserDefaults key holding the user's logo-API publishable token.
-    /// Logo-API tokens (Logo.dev, Brandfetch) are publishable, not
-    /// secret — but we still keep it out of source. Empty ⇒ the fetch
-    /// tier is disabled.
-    static let tokenDefaultsKey = "BudgetBot.logoAPIToken"
-
-    static var logoAPIToken: String {
-        get { UserDefaults.standard.string(forKey: tokenDefaultsKey) ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: tokenDefaultsKey) }
-    }
-
-    static var isFetchEnabled: Bool { !logoAPIToken.isEmpty }
 
     // MARK: - Caches
 
@@ -67,7 +54,7 @@ enum BrandLogoStore {
     // MARK: - Lookup
 
     /// Synchronous lookup — memory then disk. Returns `nil` if the
-    /// logo has never been fetched (caller can then trigger `fetch`).
+    /// logo has never been fetched (caller can then trigger `logo`).
     static func cachedLogo(forDomain domain: String) -> UIImage? {
         let key = domain as NSString
         if let hit = memory.object(forKey: key) { return hit }
@@ -79,14 +66,13 @@ enum BrandLogoStore {
         return image
     }
 
-    /// Fetches a logo from the API tier and persists it. Returns the
-    /// cached copy immediately if there already is one. `nil` when the
-    /// fetch tier is disabled or the request fails — caller falls back
-    /// to the SF Symbol.
+    /// Returns the brand's logo — the cached copy if there is one,
+    /// otherwise fetches it from the favicon service and persists it.
+    /// `nil` only when offline on first sight or the request fails;
+    /// the caller then falls back to an SF Symbol.
     static func logo(forDomain domain: String) async -> UIImage? {
         if let cached = cachedLogo(forDomain: domain) { return cached }
-        guard isFetchEnabled, let request = makeRequest(domain: domain) else { return nil }
-
+        guard let request = makeRequest(domain: domain) else { return nil }
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
@@ -102,19 +88,19 @@ enum BrandLogoStore {
 
     // MARK: - Internals
 
-    /// Logo.dev-style request: `https://img.logo.dev/<domain>?token=…`.
-    /// Brandfetch's CDN follows a similar domain-keyed shape — swap the
-    /// host/params here if the provider changes.
+    /// Google's public favicon endpoint:
+    /// `https://www.google.com/s2/favicons?domain=<domain>&sz=128`.
+    /// Free, unauthenticated, no quota worth worrying about. DuckDuckGo
+    /// (`https://icons.duckduckgo.com/ip3/<domain>.ico`) is a drop-in
+    /// alternative if this ever needs swapping.
     private static func makeRequest(domain: String) -> URLRequest? {
         var components = URLComponents()
         components.scheme = "https"
-        components.host = "img.logo.dev"
-        components.path = "/\(domain)"
+        components.host = "www.google.com"
+        components.path = "/s2/favicons"
         components.queryItems = [
-            URLQueryItem(name: "token", value: logoAPIToken),
-            URLQueryItem(name: "size", value: "128"),
-            URLQueryItem(name: "format", value: "png"),
-            URLQueryItem(name: "retina", value: "true")
+            URLQueryItem(name: "domain", value: domain),
+            URLQueryItem(name: "sz", value: "128")
         ]
         guard let url = components.url else { return nil }
         return URLRequest(url: url)
