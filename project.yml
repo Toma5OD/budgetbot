@@ -22,7 +22,6 @@ targets:
           - "**/.DS_Store"
     resources:
       - path: BudgetBot/Resources/Assets.xcassets
-      - path: BudgetBot/Resources/Brands.xcassets
       - path: BudgetBot/Resources/PrivacyInfo.xcprivacy
     dependencies:
       - target: ShareExtension

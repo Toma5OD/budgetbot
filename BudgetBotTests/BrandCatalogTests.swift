@@ -1,5 +1,4 @@
 import XCTest
-import SwiftUI
 @testable import BudgetBot
 
 final class BrandCatalogTests: XCTestCase {
@@ -23,39 +22,27 @@ final class BrandCatalogTests: XCTestCase {
         XCTAssertNil(BrandCatalog.match(name: "Some Local Window Cleaner"))
     }
 
-    func test_everyBrandHasAStableAssetNameAndParseableTint() {
-        for brand in BrandCatalog.all {
-            XCTAssertEqual(brand.assetName, "brand.\(brand.id)")
-            XCTAssertFalse(brand.matchKeys.isEmpty, "\(brand.id) needs match keys")
-            // Hex must be 6 chars — Color(hex:) tolerates more, but the
-            // catalogue should stay tidy.
-            XCTAssertEqual(brand.tintHex.count, 6,
-                           "\(brand.id) tint hex should be 6 digits")
-        }
-    }
-
     func test_brandIDsAreUnique() {
         let ids = BrandCatalog.all.map(\.id)
         XCTAssertEqual(ids.count, Set(ids).count, "Brand ids must be unique")
     }
 
-    func test_irishRegionalBrands_haveADomainForTheAPITier() {
-        // simple-icons doesn't stock these — they rely entirely on the
-        // logo-API tier, so a domain is mandatory.
-        for id in ["gomo", "eir", "electricireland", "bordgais",
-                   "virginmedia", "flyefit"] {
-            let brand = BrandCatalog.all.first { $0.id == id }
-            XCTAssertNotNil(brand, "expected catalogue entry: \(id)")
-            XCTAssertNotNil(brand?.domain, "\(id) needs a domain for the logo API")
+    func test_everyBrandHasMatchKeysAndADomain() {
+        // Logos are fetched by domain — a brand with no domain could
+        // never resolve a logo; one with no match keys is unreachable.
+        for brand in BrandCatalog.all {
+            XCTAssertFalse(brand.matchKeys.isEmpty, "\(brand.id) needs match keys")
+            XCTAssertFalse(brand.domain.isEmpty, "\(brand.id) needs a domain")
+            XCTAssertTrue(brand.domain.contains("."),
+                          "\(brand.id) domain looks malformed: \(brand.domain)")
         }
     }
 
-    func test_colorHexParsing() {
-        // 6-digit, with + without leading hash.
-        let red = Color(hex: "E50914")
-        let redHashed = Color(hex: "#E50914")
-        XCTAssertEqual(red, redHashed)
-        // Garbage falls back to gray rather than crashing.
-        XCTAssertEqual(Color(hex: "not-a-colour"), .gray)
+    func test_irishRegionalBrands_areCatalogued() {
+        for id in ["gomo", "eir", "electricireland", "bordgais",
+                   "virginmedia", "flyefit"] {
+            XCTAssertTrue(BrandCatalog.all.contains { $0.id == id },
+                          "expected catalogue entry: \(id)")
+        }
     }
 }

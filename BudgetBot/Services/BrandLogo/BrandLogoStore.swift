@@ -1,12 +1,11 @@
 import Foundation
 import UIKit
 
-/// Persistent store for *fetched* brand logos — the long-tail brands
-/// the bundled simple-icons set doesn't carry (regional telcos,
-/// utilities, gyms).
+/// Persistent store for fetched brand logos — the single source of
+/// real, full-colour subscription logos.
 ///
-/// Caching design — answering "store them once so they load fast and
-/// don't waste data":
+/// Caching design — "store them once so they load fast and don't
+/// waste data":
 ///   - **Disk**: a logo is written to a `BrandLogos/` folder in the
 ///     App Group container the first time it's fetched, and read from
 ///     there forever after. Fetched once, then zero network.
@@ -19,9 +18,9 @@ import UIKit
 ///   - **Memory**: an `NSCache` sits on top so we don't re-decode a
 ///     PNG every time a row scrolls past.
 ///
-/// The fetch tier is gated on a logo-API token (`logoAPIToken`). With
-/// no token set the store is inert — the bundled marks and the SF
-/// Symbol fallback still cover everything offline.
+/// Fetching is gated on a free logo-API token (`logoAPIToken`). With
+/// no token set the store is inert and `BrandLogoView` shows its SF
+/// Symbol fallback.
 enum BrandLogoStore {
 
     // MARK: - API configuration

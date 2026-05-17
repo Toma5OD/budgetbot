@@ -43,9 +43,11 @@ struct SavingsGoalsView: View {
                 .accessibilityIdentifier("goals.add")
             }
         }
-        .navigationDestination(for: SavingsGoal.self) { goal in
-            GoalDetailView(goal: goal)
-        }
+        // No `.navigationDestination(for: SavingsGoal.self)` here — this
+        // view is always pushed onto Home's navigation stack, which
+        // already declares it. Two declarations of the same type on one
+        // stack triggers a SwiftUI warning and only the root-most wins,
+        // so we rely on Home's single declaration.
         .sheet(isPresented: $showNew) {
             NewGoalSheet()
         }
