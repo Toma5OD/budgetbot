@@ -14,8 +14,10 @@ struct SettingsView: View {
     @State private var showSignOutConfirm = false
     @State private var showRemoveKeyConfirm = false
     @State private var showAppleRevokeSheet = false
+#if DEBUG
     @State private var showLoadDemoConfirm = false
     @State private var isLoadingDemo = false
+#endif
     @State private var cloudKitToggle = PersistenceController.isCloudKitSyncEnabled
     @State private var showCloudKitRestartHint = false
     @State private var notifEnabled  = LocalNotificationService.shared.enabled
@@ -392,6 +394,7 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
 
+#if DEBUG
                 section("Developer (temp)") {
                     Button {
                         showLoadDemoConfirm = true
@@ -413,6 +416,7 @@ struct SettingsView: View {
                     .disabled(isLoadingDemo)
                     .accessibilityIdentifier("settings.loadDemoData")
                 }
+#endif
 
                 section("Account") {
                     Button {
@@ -466,6 +470,7 @@ struct SettingsView: View {
         } message: {
             Text("You can sign back in any time. Your data stays on this device.")
         }
+#if DEBUG
         .confirmationDialog("Wipe everything and load demo data?",
                             isPresented: $showLoadDemoConfirm,
                             titleVisibility: .visible) {
@@ -476,6 +481,7 @@ struct SettingsView: View {
         } message: {
             Text("This deletes ALL of your existing accounts, transactions and categories, then inserts a fake demo user with ~3 months of synthetic activity. No way back.")
         }
+#endif
         .sheet(isPresented: $showAppleRevokeSheet) {
             AppleRevokeInstructionsSheet()
         }
@@ -581,6 +587,7 @@ struct SettingsView: View {
         return "Tap to fetch"
     }
 
+#if DEBUG
     @MainActor
     private func loadDemoData() async {
         isLoadingDemo = true
@@ -592,6 +599,7 @@ struct SettingsView: View {
             savedToast = "Failed to load demo data: \(error.localizedDescription)"
         }
     }
+#endif
 
     private func deleteAccountAndData() {
         for type: any PersistentModel.Type in [

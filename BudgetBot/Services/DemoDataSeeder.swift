@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import SwiftData
 
@@ -718,3 +719,4 @@ private struct SeededGenerator: RandomNumberGenerator {
         return (hi << 32) | lo
     }
 }
+#endif
