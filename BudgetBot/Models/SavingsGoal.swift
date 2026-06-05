@@ -25,6 +25,15 @@ final class SavingsGoal {
     /// Optional free-text — "for the wedding fund", "split with Alex".
     var note: String?
 
+    /// Optional finish-line reward — id of a `RewardPackage` the user
+    /// committed to at goal creation. Nil if no reward set up.
+    var rewardPackageID: String?
+    /// Set when the user claims the reward at goal completion. Nil
+    /// while the goal is in progress or after completion if the user
+    /// hasn't claimed yet. The actual partner delivery is wired up
+    /// later — this just records *that* the claim happened.
+    var rewardClaimedAt: Date?
+
     @Relationship(deleteRule: .cascade, inverse: \GoalContribution.goal)
     var contributions: [GoalContribution]?
 
@@ -37,7 +46,9 @@ final class SavingsGoal {
         deadline: Date? = nil,
         note: String? = nil,
         createdAt: Date = .now,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        rewardPackageID: String? = nil,
+        rewardClaimedAt: Date? = nil
     ) {
         self.id = id
         self.name = name
@@ -48,6 +59,8 @@ final class SavingsGoal {
         self.note = note
         self.createdAt = createdAt
         self.completedAt = completedAt
+        self.rewardPackageID = rewardPackageID
+        self.rewardClaimedAt = rewardClaimedAt
     }
 
     /// Non-optional accessor for readability. Use this instead of

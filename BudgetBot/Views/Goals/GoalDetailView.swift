@@ -12,11 +12,13 @@ struct GoalDetailView: View {
     @State private var showContribute = false
     @State private var showEdit = false
     @State private var showDeleteConfirm = false
+    @State private var showClaimAlert = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
                 hero
+                rewardCard
                 statsRow
                 contributionsSection
             }
@@ -64,6 +66,11 @@ struct GoalDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes the goal and every contribution logged against it. Can't be undone.")
+        }
+        .alert("Reward delivery launches soon", isPresented: $showClaimAlert) {
+            Button("Got it", role: .cancel) {}
+        } message: {
+            Text("We're lining up a gifting partner so your reward ships automatically. You'll hear from us when it's ready.")
         }
         .overlay(alignment: .bottomTrailing) {
             Button {
@@ -129,6 +136,51 @@ struct GoalDetailView: View {
         case .behind:     return .orange
         case .impossible: return theme.current.expenseColor
         case .noDeadline: return theme.current.tint
+        }
+    }
+
+    // MARK: - Reward
+
+    @ViewBuilder
+    private var rewardCard: some View {
+        if let id = goal.rewardPackageID, let pkg = RewardCatalog.get(id: id) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: pkg.sfSymbol)
+                        .font(.title2)
+                        .foregroundStyle(theme.current.tint)
+                        .frame(width: 40, height: 40)
+                        .background(theme.current.tint.opacity(0.15), in: Circle())
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Finish-line reward")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(pkg.displayName).font(.headline)
+                    }
+                    Spacer()
+                }
+                Text(pkg.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if goal.isHit {
+                    Button {
+                        showClaimAlert = true
+                    } label: {
+                        Label("Claim reward", systemImage: "gift.fill")
+                            .font(.callout.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(theme.current.tint, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("Sent when you hit \(CurrencyFormatter.string(for: goal.targetAmount, currency: goal.currency)).")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(16)
+            .themedCard()
         }
     }
 

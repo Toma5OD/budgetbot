@@ -15,6 +15,7 @@ struct NewGoalSheet: View {
     @State private var deadline: Date = Calendar.current.date(byAdding: .month, value: 6, to: .now) ?? .now
     @State private var useDeadline: Bool = true
     @State private var note: String = ""
+    @State private var rewardPackageID: String? = nil
 
     /// Curated picker — anything outside this list is still allowed via
     /// the Text field but these are the typical shapes a savings goal
@@ -65,6 +66,36 @@ struct NewGoalSheet: View {
                     }
                 }
 
+                Section {
+                    Picker("Reward", selection: $rewardPackageID) {
+                        Text("None").tag(String?.none)
+                        ForEach(RewardCatalog.all) { pkg in
+                            Label(pkg.displayName, systemImage: pkg.sfSymbol)
+                                .tag(Optional(pkg.id))
+                        }
+                    }
+                    if let id = rewardPackageID, let pkg = RewardCatalog.get(id: id) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(pkg.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                Text(pkg.priceRange)
+                                    .font(.caption.bold())
+                                if pkg.containsAlcohol {
+                                    Label("Contains alcohol", systemImage: "wineglass")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Finish-line reward")
+                } footer: {
+                    Text("Lock in your celebration up front. We'll send it when you hit the goal.")
+                }
+
                 Section("Notes") {
                     TextField("Optional", text: $note, axis: .vertical)
                         .lineLimit(1...4)
@@ -110,7 +141,8 @@ struct NewGoalSheet: View {
             targetAmount: target,
             currency: currency,
             deadline: useDeadline ? deadline : nil,
-            note: note.isEmpty ? nil : note
+            note: note.isEmpty ? nil : note,
+            rewardPackageID: rewardPackageID
         )
         context.insert(goal)
         try? context.save()
