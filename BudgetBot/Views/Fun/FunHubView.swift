@@ -32,6 +32,14 @@ struct FunHubView: View {
                 header
 
                 hubCard(
+                    title: "Daily Roast",
+                    subtitle: "Today's harsh-jokey review of your spending and saving.",
+                    icon: "flame.fill",
+                    tint: .red,
+                    badge: nil
+                ) { DailyRoastView() }
+
+                hubCard(
                     title: "Rate in Hindsight",
                     subtitle: "Score past purchases 1–5 in a quick swipe game.",
                     icon: "star.leadinghalf.filled",

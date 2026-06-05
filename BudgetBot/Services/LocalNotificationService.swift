@@ -31,6 +31,7 @@ final class LocalNotificationService {
         static let weekly        = "BudgetBot.notif.weeklyRecap"
         static let subscriptions = "BudgetBot.notif.subscriptionRenewal"
         static let budget        = "BudgetBot.notif.budgetThreshold"
+        static let dailyRoast    = "BudgetBot.notif.dailyRoast"
         static let crossed75     = "BudgetBot.notif.budgetCrossed75."   // + YYYY-MM
         static let crossed100    = "BudgetBot.notif.budgetCrossed100."  // + YYYY-MM
     }
@@ -55,6 +56,10 @@ final class LocalNotificationService {
     var budgetThresholdEnabled: Bool {
         get { UserDefaults.standard.object(forKey: Key.budget) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: Key.budget) }
+    }
+    var dailyRoastEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: Key.dailyRoast) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Key.dailyRoast) }
     }
 
     // MARK: - Permission
@@ -90,6 +95,7 @@ final class LocalNotificationService {
 
         if weeklyRecapEnabled            { scheduleWeeklyRecap() }
         if subscriptionRenewalEnabled    { schedule(subscriptions: subscriptions) }
+        if dailyRoastEnabled             { scheduleDailyRoast() }
         // Budget threshold is event-driven, not pre-scheduled.
     }
 
@@ -114,6 +120,39 @@ final class LocalNotificationService {
 
         let trigger = UNCalendarNotificationTrigger(dateMatching: dc, repeats: true)
         let req = UNNotificationRequest(identifier: "weeklyRecap",
+                                        content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(req)
+    }
+
+    // MARK: - Daily roast
+
+    /// Fires at 19:00 local every day with a generic punchy line. The
+    /// real, data-aware roast lives inside the app — local
+    /// notifications can't run our rule engine at fire time, so this
+    /// nudges the user to open the Roast screen where the lines get
+    /// generated from current data.
+    private func scheduleDailyRoast() {
+        let bodies = [
+            "Yesterday wants a word.",
+            "We saw what you bought.",
+            "Your wallet's audit is ready.",
+            "Tap in for today's verdict.",
+            "Time to roast yourself."
+        ]
+        let day = Calendar.current.ordinality(of: .day, in: .year, for: .now) ?? 1
+
+        let content = UNMutableNotificationContent()
+        content.title = "Time to face the music."
+        content.body = bodies[day % bodies.count]
+        content.sound = .default
+        content.threadIdentifier = "dailyRoast"
+
+        var dc = DateComponents()
+        dc.hour    = 19
+        dc.minute  = 0
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dc, repeats: true)
+        let req = UNNotificationRequest(identifier: "dailyRoast",
                                         content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(req)
     }
