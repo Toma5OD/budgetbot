@@ -12,6 +12,53 @@ Project facts:
 - Min iOS: 17.0 (see `project.yml`)
 - Solo dev — GitHub Actions free plan, $0/month spend cap
 
+## 0. Current readiness (v0.1.0)
+
+Snapshot of what's already done in code vs. what still needs a human
+before the first App Store upload.
+
+**Done in code:**
+
+- Demo data + the Settings → Developer entry are wrapped in `#if DEBUG`
+  — release builds ship clean.
+- Brand logos resolve via Google's free favicon endpoint. No API token,
+  no per-user setup, no recurring cost.
+- Daily Roast lives in the Fun hub and repeats at 19:00 local via a
+  `UNCalendarNotificationTrigger`.
+- Goal rewards: pick a package at goal creation; claim stub on
+  completion. Partner ordering is the future change at the claim
+  handler.
+- `PrivacyInfo.xcprivacy` covers email, name, financial info, with
+  tracking explicitly `false`.
+- `Info.plist` purpose strings present for camera and photo library.
+- Sign in with Apple wired as primary auth.
+- No hardcoded secrets — Anthropic + GoCardless keys are user-supplied
+  (Settings → AI; Settings → Bank sync).
+- `print()` calls in service paths are wrapped in `#if DEBUG`.
+
+**Outstanding (your actions before submission):**
+
+- [ ] Enrol in Apple Developer Program ($99/yr) — §1.
+- [ ] Register App ID, App Group, iCloud container — §2.
+- [ ] Set up App Store Connect listing: name, description, keywords,
+      screenshots, privacy URL, support URL — §4, §9.
+- [ ] Take screenshots after loading demo data: Activity (with logos),
+      Goal detail (with reward card), Daily Roast, Analytics, Capture
+      review.
+- [ ] Bump `MARKETING_VERSION` to `1.0.0` and `CURRENT_PROJECT_VERSION`
+      — §5.
+- [ ] Remove the pre-1.0 wipe-on-drift fallback in
+      `PersistenceController.swift:75` and add a real `MigrationStage`
+      if `SchemaV1` ever changes post-launch.
+- [ ] Deploy CloudKit schema to Production — §11.
+- [ ] Host a privacy-policy page + a support page; paste URLs into
+      App Store Connect.
+- [ ] Mint a time-limited reviewer Anthropic key and drop it into the
+      review notes — §10.
+- [ ] Pick an age rating. Daily Roast copy leans edgy (e.g. "your
+      caffeine receipts are basically a CV now") so 12+ is the
+      conservative default.
+
 ## 1. Apple Developer Program (one-time)
 
 1. Enrol at <https://developer.apple.com/programs/> ($99/year). Required for

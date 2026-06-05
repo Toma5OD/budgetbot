@@ -201,7 +201,9 @@ final class CaptureQueueService {
                     // Critique is best-effort: the first-pass extraction is
                     // already useful. Don't fail the whole job over an auditor
                     // mishap.
+                    #if DEBUG
                     print("⚠️ Critique pass failed (continuing without corrections): \(error)")
+                    #endif
                 }
             }
             job.drafts = drafts

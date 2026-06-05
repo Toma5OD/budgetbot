@@ -73,7 +73,9 @@ enum PersistenceController {
         do {
             return try buildContainer(inMemory: false)
         } catch {
+            #if DEBUG
             print("⚠️ ModelContainer failed to load (pre-1.0 schema drift): \(error). Wiping store and retrying.")
+            #endif
             wipeOnDiskStore()
             do {
                 return try buildContainer(inMemory: false)
