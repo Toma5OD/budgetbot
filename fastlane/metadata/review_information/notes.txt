@@ -9,6 +9,6 @@ Test instructions:
 
 Reviewer Anthropic API key (time-limited): <PASTE A FRESH KEY HERE BEFORE SUBMITTING>
 
-Other features (analytics, savings goals, widget, Hall of Shame, Daily Roast, rate-in-hindsight game) work without any AI key. Settings → Developer → "Load demo data" (DEBUG builds only) populates the app instantly with ~3 months of synthetic activity.
+Other features (analytics, savings goals, widget, Hall of Shame, Daily Roast, rate-in-hindsight game) work without any AI key — just sign in and start adding a few transactions to populate the screens.
 
 For 1.0 the app is iPhone-only (portrait). iPad layouts are planned for a later release.
