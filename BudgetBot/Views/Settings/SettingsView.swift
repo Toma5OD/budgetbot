@@ -454,7 +454,7 @@ struct SettingsView: View {
                         .padding(.bottom, 12)
                 }
 
-                Text("Version 0.1.0")
+                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .padding(.bottom, 24)
