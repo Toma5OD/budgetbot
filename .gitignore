@@ -44,3 +44,7 @@ fastlane/test_output/
 # Local secrets — should never be checked in
 *.env
 secrets.local.*
+
+# Fastlane API key references (paths only — never commit the .p8)
+/tmp/budgetbot_asc_key.json
+*.p8

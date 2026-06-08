@@ -1,0 +1,25 @@
+BudgetBot is a personal budgeting app for iPhone built around real life — real receipts, real brands, and a budget that knows what you actually bought.
+
+What it does:
+
+• Receipt capture — point the camera at a receipt and the AI pulls out merchant, amount, date and line items. PDFs, the share sheet and the photo library all work.
+
+• Real brand logos — every subscription and merchant row shows the brand's real icon, not a generic glyph. Over 100 brands across streaming, telecom, grocery, fast food, retail, transport and more.
+
+• Savings goals with finish-line rewards — set a goal (Japan trip, house deposit, wedding fund) and lock in your celebration up front. Champagne, dinner, flowers, spa day, weekend away — your call.
+
+• Daily Roast — a daily one-card review of your spending and saving that doesn't pull punches. Sometimes praise, mostly side-eye.
+
+• Hindsight ratings — score past purchases 1–5 in a swipe game so analytics surface what was actually worth it.
+
+• Hall of Shame — your worst purchases, ranked and tagged. With apology emoji.
+
+• Smart insights — needs vs wants, subscription pile-up alerts, monthly spend vs budget, counterfactual "what could've been" comparisons.
+
+Privacy:
+• No analytics. No tracking. No third-party SDKs. No ads.
+• Your data lives on your device and, if you turn iCloud sync on, in your own iCloud. We run no servers.
+• AI features use your own Anthropic API key — we never see your data.
+• Sign in with Apple is the primary auth.
+
+BudgetBot isn't your bank. It's a tool for what you actually buy, why you bought it, and whether you'd do it again.

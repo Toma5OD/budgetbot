@@ -1,0 +1,28 @@
+# Configuration for `fastlane deliver` — uploads App Store Connect
+# metadata, screenshots, and review information for BudgetBot.
+#
+# Secrets (API key path + issuer) come from a JSON file passed in via
+# --api_key_path on the CLI, kept outside the repo.
+
+app_identifier "dev.toma5od.BudgetBot"
+
+# We upload the binary via Xcode → Archive → Distribute. Deliver only
+# pushes metadata + screenshots here.
+skip_binary_upload true
+
+# Submit-for-review is the user's deliberate click — never automated.
+submit_for_review false
+
+# Don't prompt for confirmations when fields differ.
+force true
+
+# Skip the precheck on in-app purchases (we have none).
+precheck_include_in_app_purchases false
+
+# Don't overwrite review-information fields the user may have set in
+# the web UI between deliver runs.
+overwrite_screenshots true
+
+# fastlane's locale whitelist doesn't include en-IE (English Ireland)
+# even though it's a real App Store Connect locale and our primary.
+ignore_language_directory_validation true

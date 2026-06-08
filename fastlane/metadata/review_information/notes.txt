@@ -1,0 +1,14 @@
+BudgetBot's AI features (receipt extraction, conversational Ask) require the user to supply their own Anthropic API key, configured in Settings → AI → API key. The app does not include a built-in key and does not call any server we operate.
+
+Test instructions:
+
+  1. Launch the app, complete the brief welcome flow.
+  2. Sign in with Apple (any test Apple ID works).
+  3. Settings → AI → API key → paste a valid Anthropic key (reviewer key below) → Validate & save.
+  4. Capture tab → take a photo of any receipt or paste sample text → tap Process.
+
+Reviewer Anthropic API key (time-limited): <PASTE A FRESH KEY HERE BEFORE SUBMITTING>
+
+Other features (analytics, savings goals, widget, Hall of Shame, Daily Roast, rate-in-hindsight game) work without any AI key. Settings → Developer → "Load demo data" (DEBUG builds only) populates the app instantly with ~3 months of synthetic activity.
+
+For 1.0 the app is iPhone-only (portrait). iPad layouts are planned for a later release.
