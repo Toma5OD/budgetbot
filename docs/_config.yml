@@ -1,0 +1,14 @@
+title: BudgetBot
+description: Personal budgeting for iPhone — receipts, brands, and a budget that knows what you bought.
+theme: minima
+url: "https://toma5od.github.io"
+baseurl: "/budgetbot"
+
+# Existing internal docs aren't user-facing — keep them out of the
+# public site so only index.md + privacy.md ship.
+exclude:
+  - BANK_SYNC.md
+  - BRAND_LOGOS.md
+  - DEFERRED.md
+  - PERMISSIONS_AND_PRIVACY.md
+  - SHIPPING.md
