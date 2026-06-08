@@ -45,6 +45,12 @@ struct SignInView: View {
             withAnimation(.spring(response: 0.85, dampingFraction: 0.7)) {
                 heroAppeared = true
             }
+            // Clear any "Google not configured" error left over from a
+            // previous run — the button is now hidden, so the user
+            // can't dismiss it any other way.
+            if GoogleAuthConfig.clientID == nil {
+                auth.lastError = nil
+            }
         }
     }
 
@@ -127,39 +133,41 @@ struct SignInView: View {
             .frame(height: 54)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            Button {
-                signingInGoogle = true
-                Task {
-                    await auth.signInWithGoogle(context: context)
-                    signingInGoogle = false
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    if signingInGoogle {
-                        ProgressView().tint(.primary)
-                    } else {
-                        GoogleGlyph()
+            if GoogleAuthConfig.clientID != nil {
+                Button {
+                    signingInGoogle = true
+                    Task {
+                        await auth.signInWithGoogle(context: context)
+                        signingInGoogle = false
                     }
-                    Text(signingInGoogle ? "Opening Google…" : "Continue with Google")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 0)
+                } label: {
+                    HStack(spacing: 12) {
+                        if signingInGoogle {
+                            ProgressView().tint(.primary)
+                        } else {
+                            GoogleGlyph()
+                        }
+                        Text(signingInGoogle ? "Opening Google…" : "Continue with Google")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(UIColor.systemBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
+                    )
                 }
-                .padding(.horizontal, 18)
-                .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color(UIColor.systemBackground))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
-                )
+                .buttonStyle(.pressable)
+                .disabled(signingInGoogle)
+                .accessibilityLabel("Continue with Google")
             }
-            .buttonStyle(.pressable)
-            .disabled(signingInGoogle)
-            .accessibilityLabel("Continue with Google")
 
             if let err = auth.lastError {
                 Label(err, systemImage: "exclamationmark.circle.fill")
