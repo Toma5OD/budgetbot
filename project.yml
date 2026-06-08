@@ -9,7 +9,7 @@ settings:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: NS4MWJH5LR
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     CODE_SIGN_STYLE: Automatic
 targets:
@@ -63,7 +63,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.toma5od.BudgetBot
         GENERATE_INFOPLIST_FILE: NO
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
         SWIFT_EMIT_LOC_STRINGS: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -89,7 +89,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.toma5od.BudgetBot.Widget
         GENERATE_INFOPLIST_FILE: NO
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
         SKIP_INSTALL: YES
 
   ShareExtension:
@@ -120,7 +120,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.toma5od.BudgetBot.ShareExtension
         GENERATE_INFOPLIST_FILE: NO
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
         SKIP_INSTALL: YES
 
   BudgetBotTests:
