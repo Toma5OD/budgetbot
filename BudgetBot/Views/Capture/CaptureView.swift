@@ -23,6 +23,7 @@ struct CaptureView: View {
     @State private var showPDFImporter = false
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var justQueued = false
+    @State private var showAIConsent = false
 
     var body: some View {
         NavigationStack {
@@ -232,12 +233,13 @@ struct CaptureView: View {
     private var submitBar: some View {
         VStack(spacing: 10) {
             Button {
-                vm.queueForProcessing(in: context) { queue.pump() }
-                justQueued = true
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 1_400_000_000)
-                    justQueued = false
+                // 5.1.2(i): explicit permission before content goes to
+                // the AI service. One-time; revocable in Settings → AI.
+                guard AIConsent.isGranted else {
+                    showAIConsent = true
+                    return
                 }
+                submit()
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: justQueued ? "checkmark.circle.fill" : "paperplane.circle.fill")
@@ -251,6 +253,9 @@ struct CaptureView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(!vm.hasInput)
+            .sheet(isPresented: $showAIConsent) {
+                AIConsentSheet { submit() }
+            }
 
             if vm.hasInput {
                 Button(role: .destructive) {
@@ -262,6 +267,15 @@ struct CaptureView: View {
             }
         }
         .padding(.horizontal, 16)
+    }
+
+    private func submit() {
+        vm.queueForProcessing(in: context) { queue.pump() }
+        justQueued = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            justQueued = false
+        }
     }
 
     private func tile(title: String, icon: String, action: @escaping () -> Void) -> some View {

@@ -6,7 +6,7 @@ permalink: /privacy/
 
 # BudgetBot — Privacy Policy
 
-**Last updated: 8 June 2026**
+**Last updated: 11 June 2026**
 
 BudgetBot is a personal finance app that runs on your iPhone. This
 policy explains what data we handle, where it lives, and who else can
@@ -62,17 +62,39 @@ We do **not** collect:
 There are two places the app may send data outside your device, and
 both are triggered by an explicit action you take:
 
-### Anthropic (Claude API) — only on your action
+### Anthropic (Claude API) — only with your permission, only on your action
 
-When you ask the AI to extract a receipt, scan a PDF, or you send a
-message in the Ask tab, the relevant content (image, document, or text
-of your message) is sent to Anthropic's API at `api.anthropic.com`.
-The request uses **your own Anthropic API key**, which you supply in
-Settings. BudgetBot does not ship a built-in API key and does not
-proxy or store your AI requests on any server we operate.
+BudgetBot's AI features send data to Anthropic's API at
+`api.anthropic.com` **only after you have explicitly allowed it in the
+app**. The first time you use an AI feature, the app shows a consent
+screen describing this sharing; nothing is sent if you decline. You
+can withdraw the permission at any time in Settings → AI → Data
+sharing — the AI features simply switch off and everything else keeps
+working.
 
-Anthropic's own policies govern what they do with that data. See
-<https://www.anthropic.com/privacy>.
+Exactly what is sent, when you trigger an AI action:
+
+- The **receipt photo or PDF** you chose to process, plus any note
+  text you attached to it.
+- The **text of questions** you type in the Ask tab.
+- **Compact summaries of your transaction records** (amounts, payees,
+  categories, dates) when the assistant needs them to answer your
+  question.
+
+What is *never* sent: your API keys, your account credentials, your
+contacts, your location, or anything you didn't submit to an AI
+action.
+
+How it is collected: only from what you explicitly submit in the
+Capture or Ask screens. Why: to extract structured transaction data
+from your receipt, or to answer your question. The request uses
+**your own Anthropic API key**, which you supply in Settings.
+BudgetBot does not ship a built-in API key and does not proxy or
+store your AI requests on any server we operate.
+
+Anthropic processes this data to return the extraction or answer,
+under their own privacy policy, which provides protections consistent
+with this one. See <https://www.anthropic.com/privacy>.
 
 ### Brand logos — domain-only lookup
 

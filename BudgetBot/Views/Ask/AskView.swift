@@ -14,6 +14,8 @@ struct AskView: View {
 
     @State private var vm = AskViewModel()
     @State private var question = ""
+    @State private var showAIConsent = false
+    @State private var pendingQuestion: String?
 
     private let suggestions = [
         "How much did I spend on coffee in the last 30 days?",
@@ -95,6 +97,15 @@ struct AskView: View {
                 }
             }
             .onAppear { hydrate() }
+            .sheet(isPresented: $showAIConsent) {
+                AIConsentSheet {
+                    if let q = pendingQuestion {
+                        pendingQuestion = nil
+                        question = ""
+                        vm.ask(q)
+                    }
+                }
+            }
         }
     }
 
@@ -136,6 +147,14 @@ struct AskView: View {
     private func send() {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return }
+        // 5.1.2(i): explicit permission before the question (and any
+        // transaction summaries the agent fetches) goes to the AI
+        // service. One-time; revocable in Settings → AI.
+        guard AIConsent.isGranted else {
+            pendingQuestion = q
+            showAIConsent = true
+            return
+        }
         question = ""
         vm.ask(q)
     }

@@ -108,6 +108,14 @@ final class CaptureQueueService {
             refreshCounts()
             return
         }
+        // Backstop for 5.1.2(i): no job content goes to the AI service
+        // without the user's explicit consent. Like the offline case,
+        // jobs stay `queued` (not failed) — granting consent in the
+        // Capture screen re-pumps the queue.
+        guard AIConsent.isGranted else {
+            refreshCounts()
+            return
+        }
         while let job = nextQueued() {
             if await process(job) == .deferredOffline { break }
         }

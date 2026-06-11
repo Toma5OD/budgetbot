@@ -92,6 +92,14 @@ final class AskViewModel {
     private func run() async {
         defer { isStreaming = false }
 
+        // Backstop for 5.1.2(i) — the UI gates on consent before
+        // calling `ask`, but nothing should reach Anthropic without it
+        // no matter the entry path.
+        guard AIConsent.isGranted else {
+            error = "AI processing needs your permission first — you'll be asked when you send a question."
+            return
+        }
+
         guard let service = AIService.fromKeychain(model: model) else {
             error = "No AI API key set. Add one in Settings."
             return

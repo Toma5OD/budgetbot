@@ -771,6 +771,35 @@ private struct APIKeyManagerView: View {
             }
 
             Section {
+                if AIConsent.isGranted {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("AI data sharing allowed")
+                            if let at = AIConsent.grantedAt {
+                                Text("Granted \(at.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(.caption2).foregroundStyle(.tertiary)
+                            }
+                        }
+                        Spacer()
+                    }
+                    Button("Withdraw permission", role: .destructive) {
+                        AIConsent.revoke()
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
+                        Text("AI data sharing not allowed")
+                        Spacer()
+                    }
+                }
+            } header: {
+                Text("Data sharing")
+            } footer: {
+                Text("When allowed, content you submit for AI processing — receipt photos or PDFs, attached notes, Ask questions, and transaction summaries needed to answer them — is sent to Anthropic (api.anthropic.com) using your own API key. Nothing is sent without this permission; you're asked the first time you use an AI feature.")
+            }
+
+            Section {
                 Button("Remove key", role: .destructive) {
                     showRemoveConfirm = true
                 }
