@@ -15,6 +15,7 @@ struct AskView: View {
     @State private var vm = AskViewModel()
     @State private var question = ""
     @State private var showAIConsent = false
+    @State private var showNeedsKey = false
     @State private var pendingQuestion: String?
 
     private let suggestions = [
@@ -106,6 +107,11 @@ struct AskView: View {
                     }
                 }
             }
+            .alert("AI key needed", isPresented: $showNeedsKey) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Ask uses AI to answer from your records. Add your Anthropic API key in Settings → AI to turn it on.")
+            }
         }
     }
 
@@ -147,6 +153,12 @@ struct AskView: View {
     private func send() {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return }
+        // No key → point at Settings instead of erroring after the fact.
+        // The key is optional app-wide; only the AI features need it.
+        guard KeychainService.shared.get(.anthropicAPIKey)?.isEmpty == false else {
+            showNeedsKey = true
+            return
+        }
         // 5.1.2(i): explicit permission before the question (and any
         // transaction summaries the agent fetches) goes to the AI
         // service. One-time; revocable in Settings → AI.

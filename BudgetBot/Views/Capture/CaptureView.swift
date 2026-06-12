@@ -24,6 +24,7 @@ struct CaptureView: View {
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var justQueued = false
     @State private var showAIConsent = false
+    @State private var showNeedsKey = false
 
     var body: some View {
         NavigationStack {
@@ -233,6 +234,13 @@ struct CaptureView: View {
     private var submitBar: some View {
         VStack(spacing: 10) {
             Button {
+                // No key → point the user at Settings rather than
+                // queueing a job that can only fail. The key is optional
+                // app-wide; it's only needed for the AI features.
+                guard KeychainService.shared.get(.anthropicAPIKey)?.isEmpty == false else {
+                    showNeedsKey = true
+                    return
+                }
                 // 5.1.2(i): explicit permission before content goes to
                 // the AI service. One-time; revocable in Settings → AI.
                 guard AIConsent.isGranted else {
@@ -255,6 +263,11 @@ struct CaptureView: View {
             .disabled(!vm.hasInput)
             .sheet(isPresented: $showAIConsent) {
                 AIConsentSheet { submit() }
+            }
+            .alert("AI key needed", isPresented: $showNeedsKey) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Receipt scanning uses AI. Add your Anthropic API key in Settings → AI to turn it on. Everything else in BudgetBot works without it.")
             }
 
             if vm.hasInput {

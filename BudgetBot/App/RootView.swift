@@ -51,15 +51,27 @@ struct RootView: View {
     }
 }
 
-/// Once signed in, gate the main UI on having an API key.
+/// Once signed in, offer API-key setup on first run — but never block
+/// the app on it. The key is optional: AI features prompt for it when
+/// used, and everything else works without one. Forcing a third-party
+/// key to use the app at all is an App Review 2.1 risk and bad UX.
 private struct GatedRoot: View {
+    private static let skippedKey = "BudgetBot.apiKeyPromptSkipped"
+
     @State private var hasKey = KeychainService.shared.get(.anthropicAPIKey)?.isEmpty == false
+    @State private var skipped = UserDefaults.standard.bool(forKey: GatedRoot.skippedKey)
 
     var body: some View {
-        if hasKey {
+        if hasKey || skipped {
             MainTabView()
         } else {
-            APIKeySetupView(onSaved: { hasKey = true })
+            APIKeySetupView(
+                onSaved: { hasKey = true },
+                onSkip: {
+                    UserDefaults.standard.set(true, forKey: GatedRoot.skippedKey)
+                    skipped = true
+                }
+            )
         }
     }
 }
