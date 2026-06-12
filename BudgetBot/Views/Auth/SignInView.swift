@@ -124,14 +124,11 @@ struct SignInView: View {
 
     private var signInButtons: some View {
         VStack(spacing: 12) {
-            SignInWithAppleButton(.signIn) { request in
-                request.requestedScopes = [.email, .fullName]
-            } onCompletion: { result in
-                auth.handle(result, context: context)
+            AppleSignInButton(style: scheme == .dark ? .white : .black) {
+                auth.signInWithApple(context: context)
             }
-            .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
             .frame(height: 54)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .accessibilityLabel("Sign in with Apple")
 
             if GoogleAuthConfig.clientID != nil {
                 Button {

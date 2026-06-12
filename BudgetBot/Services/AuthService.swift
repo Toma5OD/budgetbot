@@ -94,10 +94,50 @@ final class AuthService: NSObject {
         }
     }
 
+    /// Kicks off Sign in with Apple through an explicit
+    /// `ASAuthorizationController` with a presentation anchor we choose.
+    ///
+    /// SwiftUI's `SignInWithAppleButton` lets the system resolve the
+    /// presentation context itself, which is unreliable when the app
+    /// runs in iPhone-compatibility mode on iPad (and in multi-window
+    /// setups) — the auth sheet can fail to present and the flow errors
+    /// out. Driving the controller ourselves and supplying the active
+    /// key window as the anchor (the same approach the Google flow uses)
+    /// makes it present reliably everywhere. (App Review 2.1(a): SIWA
+    /// failed on iPad Air.)
+    func signInWithApple(context: ModelContext) {
+        lastError = nil
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        request.requestedScopes = [.email, .fullName]
+
+        let coordinator = AppleSignInCoordinator { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                self.handle(result, context: context)
+                self.appleCoordinator = nil   // release after the flow ends
+            }
+        }
+        appleCoordinator = coordinator   // hold strongly while in-flight
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = coordinator
+        controller.presentationContextProvider = coordinator
+        controller.performRequests()
+    }
+
+    /// Retains the coordinator for the lifetime of one auth request —
+    /// `ASAuthorizationController` keeps only weak references.
+    private var appleCoordinator: AppleSignInCoordinator?
+
     func handle(_ result: Result<ASAuthorization, Error>, context: ModelContext) {
         switch result {
         case .failure(let err):
-            lastError = err.localizedDescription
+            // A user cancelling isn't an error worth surfacing in red.
+            if (err as? ASAuthorizationError)?.code == .canceled {
+                lastError = nil
+            } else {
+                lastError = err.localizedDescription
+            }
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
             let userID = cred.user
