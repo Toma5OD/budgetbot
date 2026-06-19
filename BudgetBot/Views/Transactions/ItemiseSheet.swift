@@ -7,14 +7,13 @@ import SwiftData
 /// lighters", the AI returns 2 × Lighter at €2, and on accept they're
 /// saved as splits on the transaction.
 ///
-/// It's honest about coverage: if what you describe doesn't account for
-/// the whole charge, the shortfall shows as an explicit "Unaccounted"
-/// line rather than the AI inflating prices to hit the total. If the
-/// items somehow exceed the charge, you decide (scale to fit or redo) —
-/// the app never silently changes your numbers.
+/// The proposed items are fully editable before you commit — rename,
+/// retype an amount, add or remove a line — and a live readout shows
+/// whether they add up to the charge, with one-tap "scale to fit". A
+/// shortfall starts life as an "Unaccounted" line you can keep or rename.
 ///
-/// The caller (TransactionDetailView) gates this on an API key + AI
-/// consent before presenting, so this sheet just runs the request.
+/// Committing replaces any existing splits, so this doubles as a
+/// re-itemise. The caller gates on an API key + AI consent first.
 struct ItemiseSheet: View {
     @Bindable var tx: Transaction
     @Environment(\.dismiss) private var dismiss
@@ -23,23 +22,29 @@ struct ItemiseSheet: View {
     @Query private var categories: [TxCategory]
 
     @State private var description = ""
-    @State private var result: ItemisationResult?
+    @State private var draft: [DraftLine] = []
+    @State private var hasRun = false
     @State private var isRunning = false
     @State private var errorMessage: String?
 
     /// Positive magnitude of the charge.
     private var total: Decimal { tx.amount < 0 ? -tx.amount : tx.amount }
 
+    /// One editable proposed item. `amountText` is the line total.
+    private struct DraftLine: Identifiable {
+        let id = UUID()
+        var description: String
+        var amountText: String
+        var quantity: Int
+        var category: String?
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     contextCard
-                    if result == nil {
-                        prompt
-                    } else {
-                        results
-                    }
+                    if hasRun { results } else { prompt }
                     if let errorMessage {
                         Label(errorMessage, systemImage: "exclamationmark.circle.fill")
                             .font(.callout)
@@ -101,122 +106,126 @@ struct ItemiseSheet: View {
             .controlSize(.large)
             .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRunning)
 
-            Text("Describe just what you remember — anything left over stays as an “Unaccounted” line you can keep or rename.")
+            Text("Describe just what you remember — you can edit everything before saving, and anything left over becomes an “Unaccounted” line you can keep or rename.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
-    // MARK: - Results
+    // MARK: - Results (editable)
 
-    @ViewBuilder
     private var results: some View {
-        if let result {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Proposed items")
-                    .font(.subheadline.bold())
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Proposed items")
+                .font(.subheadline.bold())
 
-                VStack(spacing: 0) {
-                    let lines = result.lines
-                    ForEach(lines) { line in
-                        lineRow(line, isRemainder: isRemainder(line, in: result))
-                        if line.id != lines.last?.id { Divider() }
-                    }
+            VStack(spacing: 0) {
+                ForEach($draft) { $line in
+                    editableRow($line)
+                    if line.id != draft.last?.id { Divider() }
                 }
-                .padding(.horizontal, 14)
-                .themedCard()
-
-                statusRow(result)
-                actions(result)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .themedCard()
+
+            Button {
+                draft.append(DraftLine(description: "", amountText: "", quantity: 1, category: nil))
+            } label: {
+                Label("Add item", systemImage: "plus.circle")
+                    .font(.callout)
+            }
+
+            balanceRow
+            if abs(difference) >= Decimal(string: "0.005") ?? 0 {
+                Button { scaleToFit() } label: {
+                    Label("Scale to fit \(CurrencyFormatter.string(for: total, currency: tx.currency))",
+                          systemImage: "arrow.down.right.and.arrow.up.left")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Button { commit() } label: {
+                Label("Add to charge", systemImage: "checkmark.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(!hasAnyLine)
+            .accessibilityIdentifier("itemise.commit")
+
+            Button("Redo") { hasRun = false; draft = []; errorMessage = nil }
+                .frame(maxWidth: .infinity)
         }
     }
 
-    private func lineRow(_ line: ItemisedLine, isRemainder: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(line.quantity > 1 ? "\(line.quantity) × \(line.description)" : line.description)
-                    .font(.callout)
-                    .foregroundStyle(isRemainder ? .secondary : .primary)
-                if line.quantity > 1 {
-                    Text("\(CurrencyFormatter.string(for: line.unitAmount, currency: tx.currency)) each")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-                if isRemainder {
-                    Text("not described — rename or remove after adding")
-                        .font(.caption2).foregroundStyle(.tertiary)
-                } else if let cat = line.category, !cat.isEmpty {
-                    Text(cat).font(.caption2).foregroundStyle(.tertiary)
-                }
+    private func editableRow(_ line: Binding<DraftLine>) -> some View {
+        HStack(spacing: 8) {
+            if line.wrappedValue.quantity > 1 {
+                Text("×\(line.wrappedValue.quantity)")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
             }
-            Spacer()
-            Text(CurrencyFormatter.string(for: line.amount, currency: tx.currency))
+            TextField("Item", text: line.description)
+                .font(.callout)
+            TextField("0", text: line.amountText)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
                 .font(.callout.monospacedDigit())
-                .foregroundStyle(isRemainder ? .secondary : .primary)
+                .frame(width: 76)
+            Button(role: .destructive) {
+                draft.removeAll { $0.id == line.wrappedValue.id }
+            } label: {
+                Image(systemName: "minus.circle.fill").foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 8)
     }
 
     @ViewBuilder
-    private func statusRow(_ result: ItemisationResult) -> some View {
-        switch result.status {
-        case .balanced, .under:
-            HStack {
-                Image(systemName: "checkmark.circle.fill")
-                Text("Adds up to \(CurrencyFormatter.string(for: total, currency: tx.currency))")
-                Spacer()
-            }
-            .font(.caption.bold())
-            .foregroundStyle(theme.current.incomeColor)
-        case .over(let excess):
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                Text("These add up to \(CurrencyFormatter.string(for: result.sum, currency: tx.currency)) — \(CurrencyFormatter.string(for: excess, currency: tx.currency)) more than this charge. Scale them to fit, or redo with different wording.")
-                Spacer()
-            }
-            .font(.caption)
-            .foregroundStyle(.orange)
+    private var balanceRow: some View {
+        let diff = difference
+        HStack {
+            Text("Items").font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Text(CurrencyFormatter.string(for: itemsSum, currency: tx.currency))
+                .font(.caption.bold().monospacedDigit())
         }
-    }
+        .padding(.horizontal, 4)
 
-    @ViewBuilder
-    private func actions(_ result: ItemisationResult) -> some View {
-        switch result.status {
-        case .balanced, .under:
-            Button { commit(result) } label: {
-                Label("Add \(result.lines.count) item\(result.lines.count == 1 ? "" : "s")",
+        Group {
+            if abs(diff) < (Decimal(string: "0.005") ?? 0) {
+                Label("Adds up to the \(CurrencyFormatter.string(for: total, currency: tx.currency)) charge",
                       systemImage: "checkmark.circle.fill")
-                    .frame(maxWidth: .infinity)
+                    .foregroundStyle(theme.current.incomeColor)
+            } else if diff > 0 {
+                Label("\(CurrencyFormatter.string(for: diff, currency: tx.currency)) of the charge isn't itemised yet",
+                      systemImage: "circle.dashed")
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("\(CurrencyFormatter.string(for: -diff, currency: tx.currency)) more than the charge",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .accessibilityIdentifier("itemise.commit")
-        case .over:
-            Button {
-                let scaled = AIService.proportionalScale(result.lines, to: total)
-                self.result = AIService.settle(scaled, to: total)
-            } label: {
-                Label("Scale to fit \(CurrencyFormatter.string(for: total, currency: tx.currency))",
-                      systemImage: "arrow.down.right.and.arrow.up.left")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
         }
-
-        Button("Redo") {
-            self.result = nil
-            errorMessage = nil
-        }
-        .frame(maxWidth: .infinity)
+        .font(.caption)
+        .padding(.horizontal, 4)
     }
 
-    /// The "Unaccounted" remainder is the last line when the status is
-    /// `.under`. Identify it so we can render it as the soft filler line.
-    private func isRemainder(_ line: ItemisedLine, in result: ItemisationResult) -> Bool {
-        if case .under = result.status { return line.id == result.lines.last?.id }
-        return false
+    // MARK: - Derived
+
+    private var parsed: [(desc: String, amount: Decimal, qty: Int, category: String?)] {
+        draft.map { d in
+            let amt = Decimal(string: d.amountText.replacingOccurrences(of: ",", with: ".")) ?? 0
+            return (d.description.trimmingCharacters(in: .whitespacesAndNewlines),
+                    max(0, amt), d.quantity, d.category)
+        }
     }
+    private var itemsSum: Decimal { parsed.reduce(Decimal(0)) { $0 + $1.amount } }
+    private var difference: Decimal { total - itemsSum }
+    private var hasAnyLine: Bool { parsed.contains { !$0.desc.isEmpty || $0.amount > 0 } }
 
     // MARK: - Actions
 
@@ -225,6 +234,10 @@ struct ItemiseSheet: View {
         isRunning = true
         defer { isRunning = false }
 
+        guard NetworkMonitor.shared.isOnline else {
+            errorMessage = "You're offline — itemising needs a connection. Try again when you're back online."
+            return
+        }
         guard let service = AIService.fromKeychain() else {
             errorMessage = "Add your Anthropic API key in Settings → AI to use this."
             return
@@ -241,32 +254,54 @@ struct ItemiseSheet: View {
                 errorMessage = "Couldn't make items out of that. Try describing it differently."
                 return
             }
-            result = AIService.settle(lines, to: total)
+            let settled = AIService.settle(lines, to: total)
+            draft = settled.lines.map {
+                DraftLine(description: $0.description,
+                          amountText: plainAmount($0.amount),
+                          quantity: $0.quantity,
+                          category: $0.category)
+            }
+            hasRun = true
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func commit(_ result: ItemisationResult) {
-        // Splits carry the transaction's sign (negative for an expense).
+    private func scaleToFit() {
+        let lines = parsed.map {
+            ItemisedLine(description: $0.desc, quantity: $0.qty, amount: $0.amount, category: $0.category)
+        }
+        let scaled = AIService.proportionalScale(lines, to: total)
+        for (i, s) in scaled.enumerated() where i < draft.count {
+            draft[i].amountText = plainAmount(s.amount)
+        }
+    }
+
+    private func commit() {
+        // Replace any existing splits so this also serves as re-itemise.
+        for s in tx.splitItems { context.delete(s) }
+
         let sign: Decimal = tx.amount < 0 ? -1 : 1
-        for line in result.lines {
+        for p in parsed where !(p.desc.isEmpty && p.amount == 0) {
             let matched = categories.first {
-                $0.name.compare(line.category ?? "", options: .caseInsensitive) == .orderedSame
+                $0.name.compare(p.category ?? "", options: .caseInsensitive) == .orderedSame
             }
             let split = Split(
-                description: line.description,
-                amount: line.amount * sign,
-                quantity: line.quantity,
+                description: p.desc.isEmpty ? "Item" : p.desc,
+                amount: p.amount * sign,
+                quantity: p.qty,
                 category: matched ?? tx.category,
                 transaction: tx
             )
             context.insert(split)
         }
-        // The transaction is now itemised — drop the single headline
-        // category so totals come from the splits.
         tx.category = nil
         try? context.save()
         dismiss()
+    }
+
+    /// Plain amount string for the editable field — "4", "2.5", "20.99".
+    private func plainAmount(_ d: Decimal) -> String {
+        NSDecimalNumber(decimal: d).stringValue
     }
 }

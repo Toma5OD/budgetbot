@@ -85,6 +85,11 @@ struct TransactionDetailView: View {
                         let s = Split(description: "Item", amount: 0, transaction: tx)
                         context.insert(s)
                     } label: { Label("Add split", systemImage: "plus.circle.fill") }
+                    if tx.amount < 0 {
+                        Button {
+                            startItemise()   // commit replaces these splits
+                        } label: { Label("Re-itemise with AI", systemImage: "sparkles") }
+                    }
                     Button(role: .destructive) {
                         for s in tx.splitItems { context.delete(s) }
                     } label: { Label("Merge into single category", systemImage: "rectangle.compress.vertical") }
@@ -157,15 +162,11 @@ struct TransactionDetailView: View {
     /// Gate the AI itemise flow on a key + data-sharing consent, same as
     /// the Capture and Ask entry points, before opening the sheet.
     private func startItemise() {
-        guard KeychainService.shared.get(.anthropicAPIKey)?.isEmpty == false else {
-            showItemiseNeedsKey = true
-            return
+        switch AIConsent.gate() {
+        case .needsKey:     showItemiseNeedsKey = true
+        case .needsConsent: showItemiseConsent = true
+        case .proceed:      showItemise = true
         }
-        guard AIConsent.isGranted else {
-            showItemiseConsent = true
-            return
-        }
-        showItemise = true
     }
 }
 

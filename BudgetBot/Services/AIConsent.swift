@@ -31,4 +31,17 @@ enum AIConsent {
     static func revoke() {
         UserDefaults.standard.removeObject(forKey: defaultsKey)
     }
+
+    // MARK: - Gate
+
+    /// What an AI entry point should do when the user triggers it. Every
+    /// AI action (Capture, Ask, Itemise) checks this so the rule —
+    /// "needs a key, then needs consent" — lives in one place.
+    enum Gate { case proceed, needsKey, needsConsent }
+
+    static func gate() -> Gate {
+        if KeychainService.shared.get(.anthropicAPIKey)?.isEmpty != false { return .needsKey }
+        if !isGranted { return .needsConsent }
+        return .proceed
+    }
 }
