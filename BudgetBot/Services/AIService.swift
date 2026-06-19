@@ -684,6 +684,144 @@ struct AIService {
         }
     }
 
+    // MARK: - Itemise (describe an existing charge → line items)
+
+    private static let itemiseSystem = """
+    You turn a short free-text description of a purchase into itemised line items.
+
+    You are given a MERCHANT, a known TOTAL with its CURRENCY, a list of \
+    CATEGORIES, and the user's DESCRIPTION of what they bought. Produce line \
+    items that:
+    - Reflect the description — infer quantities and sensible per-unit prices.
+    - Sum EXACTLY to the given TOTAL (the sum of every line's `amount` must \
+      equal TOTAL). This is the most important rule.
+    - Use positive `amount` magnitudes (a line's total = quantity × unit price).
+    - Carry a short `description` (e.g. "Lighter", not "two lighters").
+    - Pick a `category` from the provided CATEGORIES list when one clearly \
+      fits; otherwise omit it.
+
+    If the description is too vague to itemise, return a single line for the \
+    whole TOTAL. Never invent items the description doesn't imply. Emit the \
+    result through the `record_items` tool.
+    """
+
+    private static let itemiseToolSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "items": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": [
+                        "description": ["type": "string"],
+                        "quantity": ["type": "integer", "description": "How many of this item, >= 1."],
+                        "amount": ["type": "number", "description": "Line total (quantity × unit price), positive, in the given currency."],
+                        "category": ["type": "string", "description": "One of the provided category names, or omit."]
+                    ],
+                    "required": ["description", "amount"]
+                ]
+            ]
+        ],
+        "required": ["items"]
+    ]
+
+    /// Breaks a known charge total into line items from a free-text
+    /// description — "two lighters" against a €4 Centra charge becomes
+    /// 2 × Lighter at €2. The returned lines are guaranteed to sum to
+    /// `total` (see `reconcile`).
+    ///
+    /// `total` is the positive magnitude of the charge; the caller keeps
+    /// the transaction's sign when persisting the lines as splits.
+    func itemise(merchant: String,
+                 total: Decimal,
+                 currency: String,
+                 description: String,
+                 categories: [String]) async throws -> [ItemisedLine] {
+        let key = apiKey
+        guard !key.isEmpty else { throw AIError.missingKey }
+
+        let totalString = NSDecimalNumber(decimal: total).stringValue
+        let userText = """
+        MERCHANT: \(merchant)
+        TOTAL: \(totalString) \(currency)
+        CATEGORIES: \(categories.isEmpty ? "(none)" : categories.joined(separator: ", "))
+        DESCRIPTION: \(description)
+        """
+
+        let body: [String: Any] = [
+            "model": model,
+            "max_tokens": 1024,
+            "system": [[
+                "type": "text",
+                "text": Self.itemiseSystem,
+                "cache_control": ["type": "ephemeral"]
+            ]],
+            "tools": [[
+                "name": "record_items",
+                "description": "Record the itemised line items for the charge.",
+                "input_schema": Self.itemiseToolSchema,
+                "cache_control": ["type": "ephemeral"]
+            ]],
+            "tool_choice": ["type": "tool", "name": "record_items"],
+            "messages": [[
+                "role": "user",
+                "content": [["type": "text", "text": userText]]
+            ]]
+        ]
+
+        let raw = try await sendWithRetry(body: body, apiKey: key, includePDFBeta: false)
+        let toolInput = try Self.toolUseInput(in: raw, expectedName: "record_items")
+        let wire: ItemisationWire
+        do {
+            wire = try JSONDecoder().decode(ItemisationWire.self, from: toolInput)
+        } catch {
+            throw AIError.decoding(error.localizedDescription)
+        }
+        let lines = wire.items.map {
+            ItemisedLine(description: $0.description.trimmingCharacters(in: .whitespacesAndNewlines),
+                         quantity: max(1, $0.quantity ?? 1),
+                         amount: Decimal($0.amount),
+                         category: $0.category)
+        }
+        return Self.reconcile(lines, to: total)
+    }
+
+    /// Forces `lines` to sum exactly to `total` by scaling proportionally
+    /// and dropping any rounding residual on the largest line. Keeps every
+    /// amount non-negative. Pure + deterministic so it's unit-testable.
+    static func reconcile(_ lines: [ItemisedLine], to total: Decimal) -> [ItemisedLine] {
+        guard !lines.isEmpty, total > 0 else { return lines }
+        let raw = lines.map { max(Decimal(0), $0.amount) }
+        let sum = raw.reduce(0, +)
+
+        var scaled: [Decimal]
+        if sum <= 0 {
+            // No usable amounts — split the total evenly.
+            let each = round2(total / Decimal(lines.count))
+            scaled = Array(repeating: each, count: lines.count)
+        } else {
+            scaled = raw.map { round2($0 * total / sum) }
+        }
+
+        // Drop the penny residual on the largest line so the sum is exact.
+        let residual = total - scaled.reduce(0, +)
+        if let maxIdx = scaled.indices.max(by: { scaled[$0] < scaled[$1] }) {
+            scaled[maxIdx] += residual
+        }
+
+        return zip(lines, scaled).map { line, amt in
+            var l = line; l.amount = amt; return l
+        }
+    }
+
+    /// Round a Decimal to 2 places, banker's-free (plain half-up).
+    private static func round2(_ d: Decimal) -> Decimal {
+        var value = d
+        var result = Decimal()
+        NSDecimalRound(&result, &value, 2, .plain)
+        return result
+    }
+
     // MARK: - Ask (conversational Q&A — streaming, multi-turn, tool-using)
 
     private static let askSystem = """

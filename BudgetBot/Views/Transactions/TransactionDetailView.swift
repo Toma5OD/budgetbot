@@ -9,6 +9,10 @@ struct TransactionDetailView: View {
     @Query private var categories: [TxCategory]
     @Query(filter: #Predicate<Account> { !$0.archived }) private var accounts: [Account]
 
+    @State private var showItemise = false
+    @State private var showItemiseConsent = false
+    @State private var showItemiseNeedsKey = false
+
     var body: some View {
         Form {
             Section("Amount") {
@@ -88,6 +92,12 @@ struct TransactionDetailView: View {
             } else {
                 Section {
                     Button {
+                        startItemise()
+                    } label: {
+                        Label("Itemise with AI", systemImage: "sparkles")
+                    }
+                    .accessibilityIdentifier("tx.itemiseWithAI")
+                    Button {
                         // Convert to split by seeding one split mirroring the headline.
                         let s = Split(
                             description: tx.payee,
@@ -98,6 +108,8 @@ struct TransactionDetailView: View {
                         context.insert(s)
                         tx.category = nil
                     } label: { Label("Split into multiple categories", systemImage: "rectangle.split.3x1") }
+                } footer: {
+                    Text("No receipt? Tap “Itemise with AI”, describe what you bought, and the AI breaks the total into items.")
                 }
             }
 
@@ -118,11 +130,36 @@ struct TransactionDetailView: View {
         .scrollContentBackground(.hidden)
         .navigationTitle(tx.payee)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showItemise) {
+            ItemiseSheet(tx: tx)
+        }
+        .sheet(isPresented: $showItemiseConsent) {
+            AIConsentSheet { showItemise = true }
+        }
+        .alert("AI key needed", isPresented: $showItemiseNeedsKey) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Itemising uses AI. Add your Anthropic API key in Settings → AI to turn it on.")
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") { try? context.save() }
             }
         }
+    }
+
+    /// Gate the AI itemise flow on a key + data-sharing consent, same as
+    /// the Capture and Ask entry points, before opening the sheet.
+    private func startItemise() {
+        guard KeychainService.shared.get(.anthropicAPIKey)?.isEmpty == false else {
+            showItemiseNeedsKey = true
+            return
+        }
+        guard AIConsent.isGranted else {
+            showItemiseConsent = true
+            return
+        }
+        showItemise = true
     }
 }
 

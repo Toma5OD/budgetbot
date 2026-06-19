@@ -64,6 +64,35 @@ struct ExtractedDraftWire: Codable {
     }
 }
 
+// MARK: - AI itemisation (describe a charge → line items)
+
+/// One AI-derived line item for an existing charge. `amount` is the
+/// positive line total (quantity × unit price); the caller applies the
+/// transaction's sign when writing it as a `Split`.
+struct ItemisedLine: Identifiable, Hashable {
+    var id = UUID()
+    var description: String
+    var quantity: Int
+    var amount: Decimal
+    var category: String?
+
+    /// Per-unit price, for display ("€2.00 each").
+    var unitAmount: Decimal {
+        quantity > 1 ? amount / Decimal(quantity) : amount
+    }
+}
+
+/// Wire shape the AI emits for itemisation.
+struct ItemisationWire: Codable {
+    let items: [Item]
+    struct Item: Codable {
+        let description: String
+        let quantity: Int?
+        let amount: Double
+        let category: String?
+    }
+}
+
 /// AI's recommendation envelope.
 struct RecommendationWire: Codable {
     let kind: String             // "silly" | "savings" | "general"
