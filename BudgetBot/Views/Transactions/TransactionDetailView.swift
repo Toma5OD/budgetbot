@@ -91,12 +91,16 @@ struct TransactionDetailView: View {
                 }
             } else {
                 Section {
-                    Button {
-                        startItemise()
-                    } label: {
-                        Label("Itemise with AI", systemImage: "sparkles")
+                    // Itemising answers "what did I buy" — only meaningful
+                    // for money going out, not income.
+                    if tx.amount < 0 {
+                        Button {
+                            startItemise()
+                        } label: {
+                            Label("Itemise with AI", systemImage: "sparkles")
+                        }
+                        .accessibilityIdentifier("tx.itemiseWithAI")
                     }
-                    .accessibilityIdentifier("tx.itemiseWithAI")
                     Button {
                         // Convert to split by seeding one split mirroring the headline.
                         let s = Split(
@@ -109,7 +113,9 @@ struct TransactionDetailView: View {
                         tx.category = nil
                     } label: { Label("Split into multiple categories", systemImage: "rectangle.split.3x1") }
                 } footer: {
-                    Text("No receipt? Tap “Itemise with AI”, describe what you bought, and the AI breaks the total into items.")
+                    if tx.amount < 0 {
+                        Text("No receipt? Tap “Itemise with AI”, describe what you bought, and the AI breaks the total into items.")
+                    }
                 }
             }
 

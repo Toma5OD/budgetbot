@@ -82,6 +82,25 @@ struct ItemisedLine: Identifiable, Hashable {
     }
 }
 
+/// The outcome of reconciling AI line items against a known charge
+/// total — honest about whether the described items actually account
+/// for the whole charge.
+struct ItemisationResult: Hashable {
+    var lines: [ItemisedLine]
+    var status: Status
+
+    enum Status: Hashable {
+        /// Items add up to the total (within rounding).
+        case balanced
+        /// Items fall short; `remainder` was added as an "Unaccounted" line.
+        case under(remainder: Decimal)
+        /// Items exceed the total by `excess` — needs the user's call.
+        case over(excess: Decimal)
+    }
+
+    var sum: Decimal { lines.reduce(Decimal(0)) { $0 + $1.amount } }
+}
+
 /// Wire shape the AI emits for itemisation.
 struct ItemisationWire: Codable {
     let items: [Item]

@@ -689,20 +689,22 @@ struct AIService {
     private static let itemiseSystem = """
     You turn a short free-text description of a purchase into itemised line items.
 
-    You are given a MERCHANT, a known TOTAL with its CURRENCY, a list of \
-    CATEGORIES, and the user's DESCRIPTION of what they bought. Produce line \
-    items that:
-    - Reflect the description — infer quantities and sensible per-unit prices.
-    - Sum EXACTLY to the given TOTAL (the sum of every line's `amount` must \
-      equal TOTAL). This is the most important rule.
-    - Use positive `amount` magnitudes (a line's total = quantity × unit price).
-    - Carry a short `description` (e.g. "Lighter", not "two lighters").
-    - Pick a `category` from the provided CATEGORIES list when one clearly \
-      fits; otherwise omit it.
+    You are given a MERCHANT, the charge's TOTAL with its CURRENCY (for context \
+    only), a list of CATEGORIES, and the user's DESCRIPTION of what they bought. \
+    Produce one line per item the description actually mentions:
+    - Give each a short `description` (e.g. "Lighter", not "two lighters"), a \
+      `quantity` (>= 1), and an `amount` = quantity × a realistic per-unit price \
+      for that merchant.
+    - Only itemise what the description mentions. NEVER invent items, and NEVER \
+      inflate prices to reach the TOTAL. It is completely normal and expected for \
+      your items to add up to LESS than the TOTAL — the app handles the \
+      remainder. Use the TOTAL only to keep your prices realistic, not as a \
+      target to hit.
+    - Use positive `amount` magnitudes.
+    - Pick a `category` from the provided CATEGORIES list when one clearly fits; \
+      otherwise omit it.
 
-    If the description is too vague to itemise, return a single line for the \
-    whole TOTAL. Never invent items the description doesn't imply. Emit the \
-    result through the `record_items` tool.
+    Emit the result through the `record_items` tool.
     """
 
     private static let itemiseToolSchema: [String: Any] = [
@@ -777,38 +779,70 @@ struct AIService {
         } catch {
             throw AIError.decoding(error.localizedDescription)
         }
-        let lines = wire.items.map {
+        return wire.items.map {
             ItemisedLine(description: $0.description.trimmingCharacters(in: .whitespacesAndNewlines),
                          quantity: max(1, $0.quantity ?? 1),
                          amount: Decimal($0.amount),
                          category: $0.category)
         }
-        return Self.reconcile(lines, to: total)
     }
 
-    /// Forces `lines` to sum exactly to `total` by scaling proportionally
-    /// and dropping any rounding residual on the largest line. Keeps every
-    /// amount non-negative. Pure + deterministic so it's unit-testable.
-    static func reconcile(_ lines: [ItemisedLine], to total: Decimal) -> [ItemisedLine] {
+    /// Reconciles AI line items against the known `total` *honestly*:
+    /// rounding noise snaps to the total, a shortfall becomes an explicit
+    /// "Unaccounted" line, and an overshoot is reported (not silently
+    /// scaled away) so the user decides. Pure + deterministic — unit-tested.
+    static func settle(_ lines: [ItemisedLine],
+                       to total: Decimal,
+                       unaccountedLabel: String = "Unaccounted") -> ItemisationResult {
+        guard !lines.isEmpty, total > 0 else {
+            return ItemisationResult(lines: lines, status: .balanced)
+        }
+        let rounded = lines.map { line -> ItemisedLine in
+            var l = line; l.amount = round2(max(Decimal(0), line.amount)); return l
+        }
+        let sum = rounded.reduce(Decimal(0)) { $0 + $1.amount }
+        let tolerance = max(round2(total * (Decimal(string: "0.02") ?? 0)),
+                            Decimal(string: "0.05") ?? 0)
+        let diff = total - sum
+
+        if abs(diff) <= tolerance {
+            // Rounding noise — drop the residual on the largest line.
+            var out = rounded
+            if diff != 0, let i = out.indices.max(by: { out[$0].amount < out[$1].amount }) {
+                out[i].amount += diff
+            }
+            return ItemisationResult(lines: out, status: .balanced)
+        } else if diff > 0 {
+            // Described items fall short — surface the remainder, don't pad.
+            let extra = ItemisedLine(description: unaccountedLabel,
+                                     quantity: 1, amount: round2(diff), category: nil)
+            return ItemisationResult(lines: rounded + [extra],
+                                     status: .under(remainder: round2(diff)))
+        } else {
+            // Items exceed the charge — the user resolves it (scale or redo).
+            return ItemisationResult(lines: rounded, status: .over(excess: round2(-diff)))
+        }
+    }
+
+    /// Forces `lines` to sum exactly to `total` by scaling proportionally,
+    /// residual on the largest line. Only used when the user *explicitly*
+    /// asks to scale an overshoot to fit — never silently.
+    static func proportionalScale(_ lines: [ItemisedLine], to total: Decimal) -> [ItemisedLine] {
         guard !lines.isEmpty, total > 0 else { return lines }
         let raw = lines.map { max(Decimal(0), $0.amount) }
         let sum = raw.reduce(0, +)
 
         var scaled: [Decimal]
         if sum <= 0 {
-            // No usable amounts — split the total evenly.
             let each = round2(total / Decimal(lines.count))
             scaled = Array(repeating: each, count: lines.count)
         } else {
             scaled = raw.map { round2($0 * total / sum) }
         }
-
-        // Drop the penny residual on the largest line so the sum is exact.
         let residual = total - scaled.reduce(0, +)
         if let maxIdx = scaled.indices.max(by: { scaled[$0] < scaled[$1] }) {
             scaled[maxIdx] += residual
         }
-
         return zip(lines, scaled).map { line, amt in
             var l = line; l.amount = amt; return l
         }
