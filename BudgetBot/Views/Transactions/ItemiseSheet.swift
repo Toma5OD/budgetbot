@@ -26,6 +26,8 @@ struct ItemiseSheet: View {
     @State private var hasRun = false
     @State private var isRunning = false
     @State private var errorMessage: String?
+    @State private var showConsent = false
+    @State private var showNeedsKey = false
 
     /// Positive magnitude of the charge.
     private var total: Decimal { tx.amount < 0 ? -tx.amount : tx.amount }
@@ -54,12 +56,20 @@ struct ItemiseSheet: View {
                 .padding(16)
             }
             .scrollContentBackground(.hidden)
-            .navigationTitle("Itemise with AI")
+            .navigationTitle("Itemise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showConsent) {
+                AIConsentSheet { Task { await run() } }
+            }
+            .alert("AI key needed", isPresented: $showNeedsKey) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Describing it for the AI needs an Anthropic API key (Settings → AI). You can still add the items by hand without one.")
             }
         }
     }
@@ -85,7 +95,7 @@ struct ItemiseSheet: View {
 
     private var prompt: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("What did you buy?")
+            Text("Describe it and let AI itemise")
                 .font(.subheadline.bold())
             TextField("e.g. two lighters · a coffee and a roll · 3 pints",
                       text: $description, axis: .vertical)
@@ -94,21 +104,39 @@ struct ItemiseSheet: View {
                 .accessibilityIdentifier("itemise.description")
 
             Button {
-                Task { await run() }
+                startAI()
             } label: {
                 HStack {
                     if isRunning { ProgressView().tint(.white) }
-                    Text(isRunning ? "Itemising…" : "Itemise")
+                    Text(isRunning ? "Itemising…" : "Itemise with AI")
                         .frame(maxWidth: .infinity)
                 }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRunning)
+            .accessibilityIdentifier("itemise.ai")
 
-            Text("Describe just what you remember — you can edit everything before saving, and anything left over becomes an “Unaccounted” line you can keep or rename.")
+            Text("You can edit everything before saving, and anything left over becomes an “Unaccounted” line you can keep or rename.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            HStack {
+                VStack { Divider() }
+                Text("or").font(.caption).foregroundStyle(.tertiary)
+                VStack { Divider() }
+            }
+            .padding(.vertical, 2)
+
+            Button {
+                startManual()
+            } label: {
+                Label("Add items by hand", systemImage: "pencil")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .accessibilityIdentifier("itemise.manual")
         }
     }
 
@@ -116,7 +144,7 @@ struct ItemiseSheet: View {
 
     private var results: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Proposed items")
+            Text("Items")
                 .font(.subheadline.bold())
 
             VStack(spacing: 0) {
@@ -228,6 +256,26 @@ struct ItemiseSheet: View {
     private var hasAnyLine: Bool { parsed.contains { !$0.desc.isEmpty || $0.amount > 0 } }
 
     // MARK: - Actions
+
+    /// AI path — gated on a key + consent at the point of use, so the
+    /// manual path below stays reachable without either.
+    private func startAI() {
+        switch AIConsent.gate() {
+        case .needsKey:     showNeedsKey = true
+        case .needsConsent: showConsent = true
+        case .proceed:      Task { await run() }
+        }
+    }
+
+    /// Manual path — no AI, no key. Seed one line for the whole charge;
+    /// the user renames it and adds more, with the live balance keeping
+    /// them honest.
+    private func startManual() {
+        draft = [DraftLine(description: "", amountText: plainAmount(total),
+                           quantity: 1, category: nil)]
+        errorMessage = nil
+        hasRun = true
+    }
 
     private func run() async {
         errorMessage = nil

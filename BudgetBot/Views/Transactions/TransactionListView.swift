@@ -13,11 +13,8 @@ struct TransactionListView: View {
     @State private var search = ""
     @State private var galleryGrouping: ReceiptsGalleryView.GroupBy = .date
 
-    // Itemise-with-AI, reachable by swiping a row.
+    // Itemise, reachable by swiping a row.
     @State private var itemiseTx: Transaction?
-    @State private var pendingItemiseTx: Transaction?
-    @State private var showItemiseConsent = false
-    @State private var showItemiseNeedsKey = false
 
     enum Mode: String, CaseIterable, Identifiable {
         case transactions = "Transactions", items = "Items", receipts = "Receipts"
@@ -72,25 +69,6 @@ struct TransactionListView: View {
                 TransactionDetailView(tx: tx)
             }
             .sheet(item: $itemiseTx) { ItemiseSheet(tx: $0) }
-            .sheet(isPresented: $showItemiseConsent) {
-                AIConsentSheet {
-                    if let t = pendingItemiseTx { itemiseTx = t; pendingItemiseTx = nil }
-                }
-            }
-            .alert("AI key needed", isPresented: $showItemiseNeedsKey) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("Itemising uses AI. Add your Anthropic API key in Settings → AI to turn it on.")
-            }
-        }
-    }
-
-    /// Swipe → Itemise, gated on a key + consent like every AI action.
-    private func requestItemise(_ tx: Transaction) {
-        switch AIConsent.gate() {
-        case .needsKey:     showItemiseNeedsKey = true
-        case .needsConsent: pendingItemiseTx = tx; showItemiseConsent = true
-        case .proceed:      itemiseTx = tx
         }
     }
 
@@ -109,7 +87,7 @@ struct TransactionListView: View {
                             // split or an income row makes no sense.
                             if tx.amount < 0 && tx.splitItems.isEmpty {
                                 Button {
-                                    requestItemise(tx)
+                                    itemiseTx = tx
                                 } label: {
                                     Label("Itemise", systemImage: "sparkles")
                                 }

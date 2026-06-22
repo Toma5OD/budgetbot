@@ -10,8 +10,6 @@ struct TransactionDetailView: View {
     @Query(filter: #Predicate<Account> { !$0.archived }) private var accounts: [Account]
 
     @State private var showItemise = false
-    @State private var showItemiseConsent = false
-    @State private var showItemiseNeedsKey = false
 
     var body: some View {
         Form {
@@ -87,8 +85,8 @@ struct TransactionDetailView: View {
                     } label: { Label("Add split", systemImage: "plus.circle.fill") }
                     if tx.amount < 0 {
                         Button {
-                            startItemise()   // commit replaces these splits
-                        } label: { Label("Re-itemise with AI", systemImage: "sparkles") }
+                            showItemise = true   // commit replaces these splits
+                        } label: { Label("Re-itemise", systemImage: "sparkles") }
                     }
                     Button(role: .destructive) {
                         for s in tx.splitItems { context.delete(s) }
@@ -100,9 +98,9 @@ struct TransactionDetailView: View {
                     // for money going out, not income.
                     if tx.amount < 0 {
                         Button {
-                            startItemise()
+                            showItemise = true
                         } label: {
-                            Label("Itemise with AI", systemImage: "sparkles")
+                            Label("Itemise", systemImage: "sparkles")
                         }
                         .accessibilityIdentifier("tx.itemiseWithAI")
                     }
@@ -119,7 +117,7 @@ struct TransactionDetailView: View {
                     } label: { Label("Split into multiple categories", systemImage: "rectangle.split.3x1") }
                 } footer: {
                     if tx.amount < 0 {
-                        Text("No receipt? Tap “Itemise with AI”, describe what you bought, and the AI breaks the total into items.")
+                        Text("No receipt? Tap “Itemise” to break the total into items — describe it for the AI, or add them by hand.")
                     }
                 }
             }
@@ -144,14 +142,6 @@ struct TransactionDetailView: View {
         .sheet(isPresented: $showItemise) {
             ItemiseSheet(tx: tx)
         }
-        .sheet(isPresented: $showItemiseConsent) {
-            AIConsentSheet { showItemise = true }
-        }
-        .alert("AI key needed", isPresented: $showItemiseNeedsKey) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Itemising uses AI. Add your Anthropic API key in Settings → AI to turn it on.")
-        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") { try? context.save() }
@@ -159,15 +149,6 @@ struct TransactionDetailView: View {
         }
     }
 
-    /// Gate the AI itemise flow on a key + data-sharing consent, same as
-    /// the Capture and Ask entry points, before opening the sheet.
-    private func startItemise() {
-        switch AIConsent.gate() {
-        case .needsKey:     showItemiseNeedsKey = true
-        case .needsConsent: showItemiseConsent = true
-        case .proceed:      showItemise = true
-        }
-    }
 }
 
 private struct HindsightRatingSection: View {
