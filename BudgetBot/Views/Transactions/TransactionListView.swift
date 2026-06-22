@@ -13,6 +13,9 @@ struct TransactionListView: View {
     @State private var search = ""
     @State private var galleryGrouping: ReceiptsGalleryView.GroupBy = .date
 
+    // Itemise, reachable by swiping a row.
+    @State private var itemiseTx: Transaction?
+
     enum Mode: String, CaseIterable, Identifiable {
         case transactions = "Transactions", items = "Items", receipts = "Receipts"
         var id: String { rawValue }
@@ -65,6 +68,7 @@ struct TransactionListView: View {
             .navigationDestination(for: Transaction.self) { tx in
                 TransactionDetailView(tx: tx)
             }
+            .sheet(item: $itemiseTx) { ItemiseSheet(tx: $0) }
         }
     }
 
@@ -77,6 +81,18 @@ struct TransactionListView: View {
                     ForEach(items) { tx in
                         NavigationLink(value: tx) {
                             TransactionRow(tx: tx)
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            // Only expenses without splits — itemising a
+                            // split or an income row makes no sense.
+                            if tx.amount < 0 && tx.splitItems.isEmpty {
+                                Button {
+                                    itemiseTx = tx
+                                } label: {
+                                    Label("Itemise", systemImage: "sparkles")
+                                }
+                                .tint(.indigo)
+                            }
                         }
                     }
                     .onDelete { offsets in

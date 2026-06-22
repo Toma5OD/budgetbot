@@ -9,6 +9,8 @@ struct TransactionDetailView: View {
     @Query private var categories: [TxCategory]
     @Query(filter: #Predicate<Account> { !$0.archived }) private var accounts: [Account]
 
+    @State private var showItemise = false
+
     var body: some View {
         Form {
             Section("Amount") {
@@ -81,12 +83,27 @@ struct TransactionDetailView: View {
                         let s = Split(description: "Item", amount: 0, transaction: tx)
                         context.insert(s)
                     } label: { Label("Add split", systemImage: "plus.circle.fill") }
+                    if tx.amount < 0 {
+                        Button {
+                            showItemise = true   // commit replaces these splits
+                        } label: { Label("Re-itemise", systemImage: "sparkles") }
+                    }
                     Button(role: .destructive) {
                         for s in tx.splitItems { context.delete(s) }
                     } label: { Label("Merge into single category", systemImage: "rectangle.compress.vertical") }
                 }
             } else {
                 Section {
+                    // Itemising answers "what did I buy" — only meaningful
+                    // for money going out, not income.
+                    if tx.amount < 0 {
+                        Button {
+                            showItemise = true
+                        } label: {
+                            Label("Itemise", systemImage: "sparkles")
+                        }
+                        .accessibilityIdentifier("tx.itemiseWithAI")
+                    }
                     Button {
                         // Convert to split by seeding one split mirroring the headline.
                         let s = Split(
@@ -98,6 +115,10 @@ struct TransactionDetailView: View {
                         context.insert(s)
                         tx.category = nil
                     } label: { Label("Split into multiple categories", systemImage: "rectangle.split.3x1") }
+                } footer: {
+                    if tx.amount < 0 {
+                        Text("No receipt? Tap “Itemise” to break the total into items — describe it for the AI, or add them by hand.")
+                    }
                 }
             }
 
@@ -118,12 +139,16 @@ struct TransactionDetailView: View {
         .scrollContentBackground(.hidden)
         .navigationTitle(tx.payee)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showItemise) {
+            ItemiseSheet(tx: tx)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") { try? context.save() }
             }
         }
     }
+
 }
 
 private struct HindsightRatingSection: View {

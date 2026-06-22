@@ -684,6 +684,178 @@ struct AIService {
         }
     }
 
+    // MARK: - Itemise (describe an existing charge → line items)
+
+    private static let itemiseSystem = """
+    You turn a short free-text description of a purchase into itemised line items.
+
+    You are given a MERCHANT, the charge's TOTAL with its CURRENCY (for context \
+    only), a list of CATEGORIES, and the user's DESCRIPTION of what they bought. \
+    Produce one line per item the description actually mentions:
+    - Give each a short `description` (e.g. "Lighter", not "two lighters"), a \
+      `quantity` (>= 1), and an `amount` = quantity × a realistic per-unit price \
+      for that merchant.
+    - Only itemise what the description mentions. NEVER invent items, and NEVER \
+      inflate prices to reach the TOTAL. It is completely normal and expected for \
+      your items to add up to LESS than the TOTAL — the app handles the \
+      remainder. Use the TOTAL only to keep your prices realistic, not as a \
+      target to hit.
+    - Use positive `amount` magnitudes.
+    - Pick a `category` from the provided CATEGORIES list when one clearly fits; \
+      otherwise omit it.
+
+    Emit the result through the `record_items` tool.
+    """
+
+    private static let itemiseToolSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "items": [
+                "type": "array",
+                "items": [
+                    "type": "object",
+                    "properties": [
+                        "description": ["type": "string"],
+                        "quantity": ["type": "integer", "description": "How many of this item, >= 1."],
+                        "amount": ["type": "number", "description": "Line total (quantity × unit price), positive, in the given currency."],
+                        "category": ["type": "string", "description": "One of the provided category names, or omit."]
+                    ],
+                    "required": ["description", "amount"]
+                ]
+            ]
+        ],
+        "required": ["items"]
+    ]
+
+    /// Breaks a known charge total into line items from a free-text
+    /// description — "two lighters" against a €4 Centra charge becomes
+    /// 2 × Lighter at €2. The returned lines are guaranteed to sum to
+    /// `total` (see `reconcile`).
+    ///
+    /// `total` is the positive magnitude of the charge; the caller keeps
+    /// the transaction's sign when persisting the lines as splits.
+    func itemise(merchant: String,
+                 total: Decimal,
+                 currency: String,
+                 description: String,
+                 categories: [String]) async throws -> [ItemisedLine] {
+        let key = apiKey
+        guard !key.isEmpty else { throw AIError.missingKey }
+
+        let totalString = NSDecimalNumber(decimal: total).stringValue
+        let userText = """
+        MERCHANT: \(merchant)
+        TOTAL: \(totalString) \(currency)
+        CATEGORIES: \(categories.isEmpty ? "(none)" : categories.joined(separator: ", "))
+        DESCRIPTION: \(description)
+        """
+
+        let body: [String: Any] = [
+            "model": model,
+            "max_tokens": 1024,
+            "system": [[
+                "type": "text",
+                "text": Self.itemiseSystem,
+                "cache_control": ["type": "ephemeral"]
+            ]],
+            "tools": [[
+                "name": "record_items",
+                "description": "Record the itemised line items for the charge.",
+                "input_schema": Self.itemiseToolSchema,
+                "cache_control": ["type": "ephemeral"]
+            ]],
+            "tool_choice": ["type": "tool", "name": "record_items"],
+            "messages": [[
+                "role": "user",
+                "content": [["type": "text", "text": userText]]
+            ]]
+        ]
+
+        let raw = try await sendWithRetry(body: body, apiKey: key, includePDFBeta: false)
+        let toolInput = try Self.toolUseInput(in: raw, expectedName: "record_items")
+        let wire: ItemisationWire
+        do {
+            wire = try JSONDecoder().decode(ItemisationWire.self, from: toolInput)
+        } catch {
+            throw AIError.decoding(error.localizedDescription)
+        }
+        return wire.items.map {
+            ItemisedLine(description: $0.description.trimmingCharacters(in: .whitespacesAndNewlines),
+                         quantity: max(1, $0.quantity ?? 1),
+                         amount: Decimal($0.amount),
+                         category: $0.category)
+        }
+    }
+
+    /// Reconciles AI line items against the known `total` *honestly*:
+    /// rounding noise snaps to the total, a shortfall becomes an explicit
+    /// "Unaccounted" line, and an overshoot is reported (not silently
+    /// scaled away) so the user decides. Pure + deterministic — unit-tested.
+    static func settle(_ lines: [ItemisedLine],
+                       to total: Decimal,
+                       unaccountedLabel: String = "Unaccounted") -> ItemisationResult {
+        guard !lines.isEmpty, total > 0 else {
+            return ItemisationResult(lines: lines, status: .balanced)
+        }
+        let rounded = lines.map { line -> ItemisedLine in
+            var l = line; l.amount = round2(max(Decimal(0), line.amount)); return l
+        }
+        let sum = rounded.reduce(Decimal(0)) { $0 + $1.amount }
+        let tolerance = max(round2(total * (Decimal(string: "0.02") ?? 0)),
+                            Decimal(string: "0.05") ?? 0)
+        let diff = total - sum
+
+        if abs(diff) <= tolerance {
+            // Rounding noise — drop the residual on the largest line.
+            var out = rounded
+            if diff != 0, let i = out.indices.max(by: { out[$0].amount < out[$1].amount }) {
+                out[i].amount += diff
+            }
+            return ItemisationResult(lines: out, status: .balanced)
+        } else if diff > 0 {
+            // Described items fall short — surface the remainder, don't pad.
+            let extra = ItemisedLine(description: unaccountedLabel,
+                                     quantity: 1, amount: round2(diff), category: nil)
+            return ItemisationResult(lines: rounded + [extra],
+                                     status: .under(remainder: round2(diff)))
+        } else {
+            // Items exceed the charge — the user resolves it (scale or redo).
+            return ItemisationResult(lines: rounded, status: .over(excess: round2(-diff)))
+        }
+    }
+
+    /// Forces `lines` to sum exactly to `total` by scaling proportionally,
+    /// residual on the largest line. Only used when the user *explicitly*
+    /// asks to scale an overshoot to fit — never silently.
+    static func proportionalScale(_ lines: [ItemisedLine], to total: Decimal) -> [ItemisedLine] {
+        guard !lines.isEmpty, total > 0 else { return lines }
+        let raw = lines.map { max(Decimal(0), $0.amount) }
+        let sum = raw.reduce(0, +)
+
+        var scaled: [Decimal]
+        if sum <= 0 {
+            let each = round2(total / Decimal(lines.count))
+            scaled = Array(repeating: each, count: lines.count)
+        } else {
+            scaled = raw.map { round2($0 * total / sum) }
+        }
+        let residual = total - scaled.reduce(0, +)
+        if let maxIdx = scaled.indices.max(by: { scaled[$0] < scaled[$1] }) {
+            scaled[maxIdx] += residual
+        }
+        return zip(lines, scaled).map { line, amt in
+            var l = line; l.amount = amt; return l
+        }
+    }
+
+    /// Round a Decimal to 2 places, banker's-free (plain half-up).
+    private static func round2(_ d: Decimal) -> Decimal {
+        var value = d
+        var result = Decimal()
+        NSDecimalRound(&result, &value, 2, .plain)
+        return result
+    }
+
     // MARK: - Ask (conversational Q&A — streaming, multi-turn, tool-using)
 
     private static let askSystem = """
