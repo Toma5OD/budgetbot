@@ -1,1 +1,1 @@
-First release. Capture receipts with AI, set savings goals with finish-line rewards, real brand logos throughout, and the Daily Roast — a daily review that doesn't pull punches.
+New: Itemise a charge. No receipt? Open any expense and tap Itemise — describe what you bought ("two lighters") and the AI breaks the total into line items, or add them by hand. Everything's editable before you save, and anything left over becomes a tidy "Unaccounted" line. You can also swipe a charge in Activity to itemise it.
