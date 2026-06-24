@@ -6,7 +6,7 @@ permalink: /privacy/
 
 # BudgetBot — Privacy Policy
 
-**Last updated: 11 June 2026**
+**Last updated: 24 June 2026**
 
 BudgetBot is a personal finance app that runs on your iPhone. This
 policy explains what data we handle, where it lives, and who else can
@@ -104,6 +104,17 @@ favicon from a public favicon endpoint
 (e.g. `netflix.com`). No personal information, transaction details, or
 account identifier is transmitted. Logos are cached on your device
 after first fetch.
+
+### Dictation (on-device by default; cloud only if you opt in)
+
+Voice entry ("type or say it") transcribes **on your device by
+default** using Apple's Speech framework — the audio never leaves your
+phone. In Settings → Dictation you may instead choose a cloud engine
+(**OpenAI Whisper** or **Google Gemini**) and supply that provider's
+own API key. If — and only if — you select a cloud engine, the audio
+you record for an expense is sent to that provider (OpenAI or Google)
+to be transcribed, using your key. The Settings screen states this
+before you turn it on. On-device dictation sends nothing.
 
 ### GoCardless (optional, only if you set up bank sync)
 
