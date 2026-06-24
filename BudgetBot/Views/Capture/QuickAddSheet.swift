@@ -63,15 +63,21 @@ struct QuickAddSheet: View {
                 Button {
                     speech.toggle()
                 } label: {
-                    Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                        .font(.system(size: 34))
-                        .foregroundStyle(speech.isRecording ? .red : theme.current.tint)
-                        .symbolEffect(.pulse, isActive: speech.isRecording)
+                    if speech.isTranscribing {
+                        ProgressView().frame(width: 34, height: 34)
+                    } else {
+                        Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                            .font(.system(size: 34))
+                            .foregroundStyle(speech.isRecording ? .red : theme.current.tint)
+                            .symbolEffect(.pulse, isActive: speech.isRecording)
+                    }
                 }
+                .disabled(speech.isTranscribing)
                 .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
             }
-            Text(speech.isRecording ? "Listening… tap stop when you're done."
-                                    : "Type it, or tap the mic and say it.")
+            Text(speech.isTranscribing ? "Transcribing…"
+                 : speech.isRecording ? "Listening… tap stop when you're done."
+                 : "Type it, or tap the mic and say it.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

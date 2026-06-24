@@ -225,6 +225,21 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
 
+                section("Dictation") {
+                    NavigationLink {
+                        DictationSettingsView()
+                    } label: {
+                        SettingsRow("Voice & dictation",
+                                    subtitle: DictationSettings.engine.displayName,
+                                    icon: "mic.fill",
+                                    tint: .pink) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.dictation")
+                }
+
                 // The game-y features (Hall of Shame, Rate in
                 // Hindsight, Goals, Dreams) used to live here. They're
                 // *features*, not settings — they now have a proper
