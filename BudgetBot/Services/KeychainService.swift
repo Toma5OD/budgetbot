@@ -8,6 +8,11 @@ enum KeychainKey: String {
     case appleUserID     = "com.budgetbot.appleUserID"
     case googleUserID    = "com.budgetbot.googleUserID"
 
+    // Optional cloud transcription providers for dictation (Settings →
+    // Dictation). On-device is the default and needs no key.
+    case openAIKey       = "com.budgetbot.openAIKey"
+    case geminiKey       = "com.budgetbot.geminiKey"
+
     // GoCardless Bank Account Data — the PSD2 aggregator powering
     // bank sync. Each user creates their own free-tier account at
     // bankaccountdata.gocardless.com and pastes both secrets here;
