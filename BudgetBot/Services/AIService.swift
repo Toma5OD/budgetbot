@@ -848,6 +848,26 @@ struct AIService {
         }
     }
 
+    /// Expands any line with quantity > 1 into that many individual
+    /// lines, each an equal share of the line total (rounding residual
+    /// on the first). "2 × Coffee €13" becomes two "Coffee €6.50" lines
+    /// so each is independently editable. Lines stay quantity 1.
+    static func expandQuantities(_ lines: [ItemisedLine]) -> [ItemisedLine] {
+        var out: [ItemisedLine] = []
+        for line in lines {
+            guard line.quantity > 1 else { out.append(line); continue }
+            let q = line.quantity
+            let each = round2(line.amount / Decimal(q))
+            var amounts = Array(repeating: each, count: q)
+            amounts[0] += line.amount - amounts.reduce(0, +)   // residual on the first
+            for a in amounts {
+                out.append(ItemisedLine(description: line.description,
+                                        quantity: 1, amount: a, category: line.category))
+            }
+        }
+        return out
+    }
+
     /// Round a Decimal to 2 places, banker's-free (plain half-up).
     private static func round2(_ d: Decimal) -> Decimal {
         var value = d

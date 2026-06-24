@@ -12,6 +12,7 @@ struct CaptureView: View {
     @Environment(\.scenePhase)   private var scenePhase
     @Environment(FXService.self) private var fx
     @Environment(CaptureQueueService.self) private var queue
+    @Environment(ThemeManager.self) private var theme
 
     @Query(filter: #Predicate<Account> { !$0.archived }, sort: \Account.createdAt)
     private var accounts: [Account]
@@ -25,15 +26,26 @@ struct CaptureView: View {
     @State private var justQueued = false
     @State private var showAIConsent = false
     @State private var showNeedsKey = false
+    @State private var showReviewQueue = false
+    @State private var showQuickAdd = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if queue.processingCount > 0 || queue.queuedCount > 0 || queue.awaitingReviewCount > 0 {
-                        statusPill
+                        if queue.awaitingReviewCount > 0 {
+                            // Ready to review → the pill itself opens the
+                            // reviewer. No detour through Notifications.
+                            Button { showReviewQueue = true } label: { statusPill }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("capture.reviewPill")
+                        } else {
+                            statusPill
+                        }
                     }
                     intro
+                    quickAddButton
                     actionTiles
 
                     if !vm.images.isEmpty { photosSection }
@@ -67,6 +79,12 @@ struct CaptureView: View {
             .sheet(isPresented: $showCamera) {
                 CameraPicker(onPick: { img in vm.images.append(img) })
                     .ignoresSafeArea()
+            }
+            .sheet(isPresented: $showReviewQueue) {
+                ReviewQueueView()
+            }
+            .sheet(isPresented: $showQuickAdd) {
+                QuickAddSheet()
             }
             .fileImporter(
                 isPresented: $showPDFImporter,
@@ -137,7 +155,7 @@ struct CaptureView: View {
             return "Captured offline — the bot reads these the moment you're back online."
         }
         if queue.awaitingReviewCount > 0 {
-            return "Open Notifications when you're done capturing."
+            return "Tap to review them now."
         }
         if queue.processingCount > 0 || queue.queuedCount > 0 {
             return "Keep going — the bot's reading these in the background."
@@ -148,10 +166,33 @@ struct CaptureView: View {
     private var intro: some View {
         Text(vm.yoloMode
              ? "YOLO mode is on — the AI will auto-save what it finds. Toggle in Settings."
-             : "Snap, scan, attach PDFs or describe what happened. The bot processes in the background; you'll review each batch in Notifications when it's done.")
+             : "Snap, scan, attach PDFs or describe what happened. The bot processes in the background; tap the banner up top to review each batch when it's ready.")
             .font(.callout)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 16)
+    }
+
+    private var quickAddButton: some View {
+        Button { showQuickAdd = true } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "square.and.pencil")
+                    .font(.title2)
+                    .foregroundStyle(theme.current.tint)
+                    .frame(width: 40, height: 40)
+                    .background(theme.current.tint.opacity(0.15), in: Circle())
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Quick add — no receipt").font(.subheadline.bold())
+                    Text("Type or say it: “Haircut €30”").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "mic.fill").foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .themedCard()
+        }
+        .buttonStyle(.pressable)
+        .padding(.horizontal, 16)
+        .accessibilityIdentifier("capture.quickAdd")
     }
 
     private var actionTiles: some View {

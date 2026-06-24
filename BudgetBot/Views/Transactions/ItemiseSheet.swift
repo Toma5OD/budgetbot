@@ -303,10 +303,12 @@ struct ItemiseSheet: View {
                 return
             }
             let settled = AIService.settle(lines, to: total)
-            draft = settled.lines.map {
+            // Expand "2 × Coffee" into two editable Coffee lines.
+            let expanded = AIService.expandQuantities(settled.lines)
+            draft = expanded.map {
                 DraftLine(description: $0.description,
                           amountText: plainAmount($0.amount),
-                          quantity: $0.quantity,
+                          quantity: 1,
                           category: $0.category)
             }
             hasRun = true

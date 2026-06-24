@@ -40,6 +40,8 @@ targets:
           - UIInterfaceOrientationPortrait
         NSCameraUsageDescription: BudgetBot uses the camera to scan receipts, invoices and bills so the AI can extract the data.
         NSPhotoLibraryUsageDescription: BudgetBot reads photos you pick so the AI can extract transaction data from them.
+        NSMicrophoneUsageDescription: BudgetBot uses the microphone so you can dictate an expense instead of typing it.
+        NSSpeechRecognitionUsageDescription: BudgetBot transcribes your dictation on this device to turn what you say into an expense.
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
           - remote-notification
