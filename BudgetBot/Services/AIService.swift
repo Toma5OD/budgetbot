@@ -249,12 +249,20 @@ struct AIService {
         H&M, Zara, Uniqlo, Penneys, Primark → Clothing
     - Use `new_category` ONLY when none of the enum values come even close. Be conservative: \
     if `Other Expense` is your fallback instinct, look at the list again first.
-    - Categorise PER LINE ITEM where it's meaningfully mixed. A grocery shop that includes \
-    paracetamol has TWO categories: 'Groceries' and 'Pharmacy'. Emit ONE DRAFT PER CATEGORY, \
-    sum the items in each. Set `note` to "Split from <payee> receipt" on each split.
-    - When everything on the receipt is one category, emit a single draft with that headline \
-    category. Don't bother stamping every line_item with the same category — leave them blank \
-    and the app fills them in from the headline.
+    - Categorise PER LINE ITEM by what the item ACTUALLY IS — not by the shop it came from. \
+    A supermarket basket can hold a need and a want at once. Emit ONE DRAFT PER CATEGORY, sum \
+    the items in each, and set `note` to "Split from <payee> receipt" on each split.
+    - Read each item IN CONTEXT — the same word can be a need or a want. "Duck" is food \
+    (Groceries); an "inflatable duck" or "rubber duck" is a toy (Hobbies). "Oil" is Groceries; \
+    "baby oil" is Personal Care. Use the full item text, quantity and the merchant to decide.
+    - When everything on the receipt is genuinely one category, emit a single draft with that \
+    headline category and leave the line_items' categories blank — the app fills them from the \
+    headline. Only do this when you're SURE they're all the same; never lump a clearly different \
+    item under the headline just to avoid splitting.
+    - AMBIGUITY: if you can't confidently tell what an item is or which category fits (an \
+    unlabelled SKU, an odd item for that merchant, a genuinely unusual quantity), make your \
+    best guess but set the draft `confidence` below 0.7 so the app asks the user to confirm \
+    instead of silently mis-filing it.
 
     OTHER RULES:
     - `amount` is signed: negative = expense, positive = income.
@@ -270,7 +278,9 @@ struct AIService {
     set `account_hint` to that account's exact name.
     - `payee` is the merchant's name as you'd say it in conversation. Strip noise: "TESCO \
     DUBLIN 04 *MOBILE" → "Tesco". "CHEMIST WAREHOUSE STH KING ST" → "Chemist Warehouse".
-    - Never invent a transaction. Set `confidence` low if anything is unclear.
+    - Never invent a transaction. Set `confidence` low (below 0.7) whenever anything is \
+    unclear — a hard-to-read total, an ambiguous item, or a category you're unsure of. Low \
+    confidence routes the draft to the user for a quick confirmation rather than auto-saving it.
     - Do not produce prose — only call the tool.
     """
 
