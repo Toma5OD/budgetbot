@@ -364,6 +364,24 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.export")
+
+                    RowDivider()
+
+                    Button {
+                        let n = CategoryBackfill.run(in: context)
+                        savedToast = n == 0
+                            ? "Nothing to re-tag — all set."
+                            : "Re-tagged \(n) transaction\(n == 1 ? "" : "s") from the merchant."
+                    } label: {
+                        SettingsRow("Re-tag uncategorised",
+                                    subtitle: "Guess a category from the merchant for older, untagged transactions",
+                                    icon: "wand.and.stars",
+                                    tint: .mint) {
+                            chevronOnly
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.retag")
                 }
 
                 section("Storage") {

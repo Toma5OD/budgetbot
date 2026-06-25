@@ -21,7 +21,12 @@ struct RootView: View {
                     SignInView()
                 case .signedIn(_, _):
                     GatedRoot()
-                        .task { seedDefaultCategoriesIfNeeded() }
+                        .task {
+                            seedDefaultCategoriesIfNeeded()
+                            // One-off: categorise old uncategorised rows so
+                            // historical data feeds needs-vs-wants. Runs once.
+                            CategoryBackfill.runOnceIfNeeded(context)
+                        }
                 }
             }
         }
