@@ -31,17 +31,18 @@ final class CategoryClassifierTests: XCTestCase {
         XCTAssertEqual(CategoryClassifier.bucket(forCategoryName: "dining"), .discretionary)
     }
 
-    func test_unknownCategory_defaultsToDiscretionary() {
-        // Safer to under-mark "necessary" than over-mark — unknowns become
-        // candidates for cutting in budgeting suggestions.
-        XCTAssertEqual(CategoryClassifier.bucket(forCategoryName: "Crypto Mining"),
-                       .discretionary)
+    func test_unknownOrCustomCategory_isExcluded() {
+        // We don't guess need vs want for categories we don't recognise —
+        // excluded (nil) rather than silently treated as a want.
+        XCTAssertNil(CategoryClassifier.bucket(forCategoryName: "Crypto Mining"))
     }
 
-    func test_emptyAndNilCategoryName_defaultsToDiscretionary() {
-        XCTAssertEqual(CategoryClassifier.bucket(forCategoryName: nil), .discretionary)
-        XCTAssertEqual(CategoryClassifier.bucket(forCategoryName: ""),  .discretionary)
-        XCTAssertEqual(CategoryClassifier.bucket(forCategoryName: "   "), .discretionary)
+    func test_uncategorised_isExcludedNotWant() {
+        // The fix: an uncategorised expense (Quick Add / bank import) is
+        // NOT counted as a want — need vs want only reflects what's known.
+        XCTAssertNil(CategoryClassifier.bucket(forCategoryName: nil))
+        XCTAssertNil(CategoryClassifier.bucket(forCategoryName: ""))
+        XCTAssertNil(CategoryClassifier.bucket(forCategoryName: "   "))
     }
 
     func test_incomeCategories_returnNil() {
@@ -51,4 +52,5 @@ final class CategoryClassifierTests: XCTestCase {
                          "\(name) is income and shouldn't be bucketed")
         }
     }
+
 }

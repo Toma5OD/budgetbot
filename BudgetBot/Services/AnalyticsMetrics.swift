@@ -44,7 +44,8 @@ enum AnalyticsMetrics {
                     switch CategoryClassifier.bucket(forCategoryName: slice.category?.name) {
                     case .necessary:     necessary += amt
                     case .regret:        regret += amt
-                    case .discretionary, .none: discretionary += amt
+                    case .discretionary: discretionary += amt
+                    case .none:          break   // unclassifiable — excluded, not a "want"
                     }
                 }
             }

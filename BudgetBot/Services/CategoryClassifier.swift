@@ -38,18 +38,26 @@ enum CategoryClassifier {
         }
     }
 
-    /// Maps known category names to a bucket. Income categories return nil
-    /// (they aren't classified — money in isn't necessary or discretionary).
+    /// Maps a *category* to a need/want bucket. Need vs want is a property
+    /// of what was bought, so this only answers when there's a category to
+    /// go on (ideally a per-item one on a split). It never guesses from the
+    /// merchant — a Tesco basket holds both rice and an inflatable duck.
+    ///
+    /// Returns nil when we can't honestly classify — income, or no/unknown
+    /// category. The caller (need-vs-want) **excludes** nil rather than
+    /// dumping it into "want", so the split reflects only what's actually
+    /// known, not everything you haven't itemised yet.
     static func bucket(forCategoryName name: String?) -> Bucket? {
         guard let raw = name?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else {
-            return .discretionary       // unknown defaults to discretionary
+            return nil       // uncategorised → not counted (don't guess)
         }
         let normalised = raw.lowercased()
 
         if incomeCategories.contains(normalised) { return nil }
         if vice.contains(normalised)             { return .regret }
         if necessary.contains(normalised)        { return .necessary }
-        return .discretionary
+        if discretionary.contains(normalised)    { return .discretionary }
+        return nil           // unknown / custom category → not counted
     }
 
     // MARK: - Catalogues (lower-cased)
@@ -75,9 +83,18 @@ enum CategoryClassifier {
         // Transport you can't easily skip
         "fuel", "public transport", "car maintenance",
         // Family
-        "childcare", "education",
-        // Generic
-        "other expense"
+        "childcare", "education"
+    ]
+
+    /// Known discretionary ("want") categories. Kept explicit so that an
+    /// *unknown* or custom category falls through to "not counted" rather
+    /// than being silently treated as a want.
+    private static let discretionary: Set<String> = [
+        "dining", "coffee", "taxi & ride-share", "parking",
+        "streaming", "other subscriptions", "personal care",
+        "home & garden", "pets", "entertainment", "shopping",
+        "clothing", "electronics", "books & media", "hobbies",
+        "travel", "charity", "gifts given"
     ]
 
     /// Always-vice categories — alcohol & gambling. Tobacco would go here
