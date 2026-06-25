@@ -1,5 +1,3 @@
-New: Quick add. No receipt? Type or say it — “Haircut €30”, “2 coffees €13” — and BudgetBot adds it. Multiple items split into individual, editable lines.
+Smarter categories. Needs vs wants now reads the actual items on a receipt — not just the shop — so a treat in your weekly shop counts as a want, not a need. When the AI genuinely can't tell what something is, it now checks with you instead of guessing.
 
-New: Dictation your way. On-device by default (free, private, offline). Settings → Dictation lets you switch to OpenAI Whisper or Google Gemini with your own key, pick a language, and more.
-
-Better: the “ready to review” banner on Capture now opens the reviewer directly — no detour through Notifications.
+Tidy-up: a new "Re-tag uncategorised" button in Settings → Data fills in categories for older, untagged transactions in one tap.
