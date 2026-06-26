@@ -53,6 +53,54 @@ final class QuickEntryParserTests: XCTestCase {
         XCTAssertEqual(e?.amount, 20)
         XCTAssertEqual(e?.payee, "Expense")
     }
+
+    // MARK: - Dates
+
+    private let now = Date(timeIntervalSince1970: 1_750_000_000)
+
+    func test_noDate_isNil() {
+        XCTAssertNil(QuickEntryParser.parse("haircut €30", now: now)?.date)
+    }
+
+    func test_yesterday() {
+        let e = QuickEntryParser.parse("coffee €4 yesterday", now: now)
+        XCTAssertEqual(e?.payee, "Coffee")
+        XCTAssertEqual(e?.amount, 4)
+        XCTAssertEqual(e?.date, Calendar.current.date(byAdding: .day, value: -1, to: now))
+    }
+
+    func test_nDaysAgo() {
+        let e = QuickEntryParser.parse("lunch €12 2 days ago", now: now)
+        XCTAssertEqual(e?.amount, 12)
+        XCTAssertEqual(e?.date, Calendar.current.date(byAdding: .day, value: -2, to: now))
+    }
+
+    func test_today_stripsWordFromPayee() {
+        let e = QuickEntryParser.parse("today milk €3", now: now)
+        XCTAssertEqual(e?.payee, "Milk")
+        XCTAssertEqual(e?.date, now)
+    }
+}
+
+final class ReceiptDateTests: XCTestCase {
+
+    func test_dateOnly() {
+        let d = AIService.parseReceiptDate("2026-06-25")
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        XCTAssertEqual(c.year, 2026); XCTAssertEqual(c.month, 6); XCTAssertEqual(c.day, 25)
+    }
+
+    func test_dateTime_keepsTime() {
+        let d = AIService.parseReceiptDate("2026-06-25T14:30")
+        let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+        XCTAssertEqual(c.hour, 14); XCTAssertEqual(c.minute, 30)
+    }
+
+    func test_missingOrGarbage_isNow() {
+        let now = Date().timeIntervalSince1970
+        XCTAssertEqual(AIService.parseReceiptDate(nil).timeIntervalSince1970, now, accuracy: 5)
+        XCTAssertEqual(AIService.parseReceiptDate("not a date").timeIntervalSince1970, now, accuracy: 5)
+    }
 }
 
 final class ExpandQuantitiesTests: XCTestCase {

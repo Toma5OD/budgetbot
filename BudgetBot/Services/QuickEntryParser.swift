@@ -10,13 +10,23 @@ struct QuickEntry: Equatable {
     /// Positive magnitude. The caller applies the expense sign.
     var amount: Decimal
     var quantity: Int
+    /// A date the user stated ("yesterday", "2 days ago"). Nil means the
+    /// caller should use the current date + time.
+    var date: Date?
 }
 
 enum QuickEntryParser {
 
-    /// Returns nil when there's no usable amount in the text.
-    static func parse(_ raw: String) -> QuickEntry? {
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Returns nil when there's no usable amount in the text. `now` is the
+    /// reference for relative dates (injectable for tests).
+    static func parse(_ raw: String, now: Date = Date()) -> QuickEntry? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // 0. Pull out any stated date ("yesterday", "2 days ago") and
+        //    strip it so it doesn't pollute the payee.
+        let (statedDate, dateStripped) = extractDate(from: trimmed, now: now)
+        let text = dateStripped.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
 
         // 1. Amount — prefer a currency-tagged number; else the largest
@@ -33,7 +43,43 @@ enum QuickEntryParser {
 
         return QuickEntry(payee: payee.isEmpty ? "Expense" : payee,
                           amount: amountHit.value,
-                          quantity: max(1, qty?.value ?? 1))
+                          quantity: max(1, qty?.value ?? 1),
+                          date: statedDate)
+    }
+
+    // MARK: - Date
+
+    /// Recognises a few common relative dates and returns the resolved
+    /// date plus the text with that phrase removed. Default (nil) means
+    /// "use now" — handled by the caller.
+    private static func extractDate(from text: String, now: Date) -> (Date?, String) {
+        let cal = Calendar.current
+        let lower = text.lowercased()
+
+        func without(_ phrase: String) -> String {
+            guard let r = text.range(of: phrase, options: .caseInsensitive) else { return text }
+            var s = text; s.removeSubrange(r); return s
+        }
+
+        if let m = firstMatch("(\\d{1,2})\\s+days?\\s+ago", in: text) {
+            let ns = text as NSString
+            let chunk = ns.substring(with: m)
+            if let dm = firstMatch("\\d{1,2}", in: chunk),
+               let n = Int((chunk as NSString).substring(with: dm)) {
+                var s = text; s.removeSubrange(Range(m, in: text)!)
+                return (cal.date(byAdding: .day, value: -n, to: now), s)
+            }
+        }
+        if lower.contains("yesterday") {
+            return (cal.date(byAdding: .day, value: -1, to: now), without("yesterday"))
+        }
+        if lower.contains("last week") {
+            return (cal.date(byAdding: .day, value: -7, to: now), without("last week"))
+        }
+        if lower.contains("today") {
+            return (now, without("today"))
+        }
+        return (nil, text)
     }
 
     // MARK: - Amount

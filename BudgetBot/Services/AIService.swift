@@ -266,6 +266,9 @@ struct AIService {
 
     OTHER RULES:
     - `amount` is signed: negative = expense, positive = income.
+    - `date`: the transaction's date as yyyy-MM-dd. If the receipt also prints a time, include \
+    it as yyyy-MM-dd'T'HH:mm (24-hour, local). If the receipt shows NO date at all, OMIT `date` \
+    entirely — the app stamps it with the current date and time. Never guess a date.
     - Read the printed currency from the receipt (€, $, £, currency code or country tax \
     label). Only fall back to the user's default if truly unreadable.
     - Set `payment_method` from receipt cues: 'cash' if you see CASH/PAID CASH/change due, \
@@ -1231,6 +1234,23 @@ struct AIService {
         }
     }
 
+    /// Parses the AI's date string — a full datetime when the receipt
+    /// printed a time, a plain date otherwise. No date at all (nil/empty
+    /// or unparseable) → the current date and time, so a receipt that
+    /// doesn't show when it happened is stamped now.
+    static func parseReceiptDate(_ raw: String?) -> Date {
+        guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return Date() }
+        let df = DateFormatter()
+        df.calendar = Calendar(identifier: .iso8601)
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = .current
+        for format in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
+            df.dateFormat = format
+            if let d = df.date(from: raw) { return d }
+        }
+        return Date()
+    }
+
     static func backoffSeconds(attempt: Int) -> Double {
         let base = pow(2.0, Double(attempt - 1)) * 0.5    // 0.5, 1, 2, 4 …
         let jitter = Double.random(in: 0...0.4)
@@ -1244,11 +1264,7 @@ struct AIService {
     }
 
     private func mapDraft(_ w: ExtractedDraftWire, fallbackCurrency: String) -> ExtractedDraft {
-        let df = DateFormatter()
-        df.calendar = Calendar(identifier: .iso8601)
-        df.locale = Locale(identifier: "en_US_POSIX")
-        df.dateFormat = "yyyy-MM-dd"
-        let date = w.date.flatMap { df.date(from: $0) } ?? Date()
+        let date = Self.parseReceiptDate(w.date)
 
         let items = (w.line_items ?? []).map {
             ExtractedDraft.LineItem(

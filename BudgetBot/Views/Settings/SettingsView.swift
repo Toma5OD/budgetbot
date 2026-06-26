@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var notifSubs     = LocalNotificationService.shared.subscriptionRenewalEnabled
     @State private var notifBudget   = LocalNotificationService.shared.budgetThresholdEnabled
     @State private var savedToast: String?
+    @State private var retagMessage: String?
 
     static let availableModels: [(String, String)] = [
         ("claude-sonnet-4-6",          "Sonnet 4.6 · balanced"),
@@ -369,8 +370,8 @@ struct SettingsView: View {
 
                     Button {
                         let n = CategoryBackfill.run(in: context)
-                        savedToast = n == 0
-                            ? "Nothing to re-tag — all set."
+                        retagMessage = n == 0
+                            ? "Nothing to re-tag — every older transaction with a recognisable merchant already has a category. Anything still uncategorised (e.g. rent paid to a person) needs a category set by hand."
                             : "Re-tagged \(n) transaction\(n == 1 ? "" : "s") from the merchant."
                     } label: {
                         SettingsRow("Re-tag uncategorised",
@@ -522,6 +523,12 @@ struct SettingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("iCloud sync \(cloudKitToggle ? "will start" : "will stop") on next launch. If iCloud sync stays disabled in dev, also make sure the container `iCloud.dev.toma5od.BudgetBot` exists in Xcode → Signing & Capabilities → iCloud.")
+        }
+        .alert("Re-tag", isPresented: Binding(get: { retagMessage != nil },
+                                              set: { if !$0 { retagMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(retagMessage ?? "")
         }
     }
 

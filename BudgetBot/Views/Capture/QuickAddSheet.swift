@@ -12,6 +12,7 @@ struct QuickAddSheet: View {
     @Query(filter: #Predicate<Account> { !$0.archived }, sort: \Account.createdAt)
     private var accounts: [Account]
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
+    @Query private var categories: [TxCategory]
 
     @State private var text = ""
     @State private var selectedAccountID: UUID?
@@ -160,7 +161,14 @@ struct QuickAddSheet: View {
         guard let p = parsed else { return }
         speech.stop()
         let acct = accounts.first { $0.id == selectedAccountID }
+        // Best-effort category from the merchant so it isn't born
+        // uncategorised — "SuperValu €50" lands in Groceries (a need).
+        let category = MerchantCategory.resolve(p.payee).flatMap { name in
+            categories.first { $0.name.compare(name, options: .caseInsensitive) == .orderedSame }
+        }
         let tx = Transaction(
+            // Stated date ("yesterday") if any, otherwise current date+time.
+            date: p.date ?? .now,
             amount: -p.amount,
             currency: base,
             payee: p.payee,
@@ -170,15 +178,18 @@ struct QuickAddSheet: View {
         context.insert(tx)
 
         if p.quantity > 1 {
-            // Expand into individual editable line items.
+            // Expand into individual editable line items; carry the category.
             let lines = AIService.expandQuantities(
                 [ItemisedLine(description: p.payee, quantity: p.quantity,
                               amount: p.amount, category: nil)]
             )
             for l in lines {
                 context.insert(Split(description: l.description,
-                                     amount: -l.amount, quantity: 1, transaction: tx))
+                                     amount: -l.amount, quantity: 1,
+                                     category: category, transaction: tx))
             }
+        } else {
+            tx.category = category
         }
         try? context.save()
         dismiss()
