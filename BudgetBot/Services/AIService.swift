@@ -254,9 +254,13 @@ struct AIService {
         H&M, Zara, Uniqlo, Penneys, Primark → Clothing
     - Use `new_category` ONLY when none of the enum values come even close. Be conservative: \
     if `Other Expense` is your fallback instinct, look at the list again first.
-    - Categorise PER LINE ITEM by what the item ACTUALLY IS — not by the shop it came from. \
-    A supermarket basket can hold a need and a want at once. Emit ONE DRAFT PER CATEGORY, sum \
-    the items in each, and set `note` to "Split from <payee> receipt" on each split.
+    - Categorise PER LINE ITEM by what the item ACTUALLY IS — not by the shop it came from \
+    (a supermarket basket holds a need and a want at once). Put everything bought in ONE \
+    payment into ONE draft: list each item in `line_items` with its own `category`, and the \
+    app turns a multi-category draft into a single transaction with per-item splits. Do NOT \
+    break one payment into several drafts — items bought together must stay in one draft so \
+    they share one date and one merchant. Emit SEPARATE drafts only for genuinely separate \
+    payments: distinct rows on a bank statement, or things clearly bought at different times.
     - Read each item IN CONTEXT — the same word can be a need or a want. "Duck" is food \
     (Groceries); an "inflatable duck" or "rubber duck" is a toy (Hobbies). "Oil" is Groceries; \
     "baby oil" is Personal Care. Use the full item text, quantity and the merchant to decide.
@@ -276,7 +280,10 @@ struct AIService {
     to resolve ambiguity: if the receipt's year is not clearly printed, assume the CURRENT year, \
     and never output a year earlier than last year unless a full 4-digit year is plainly legible \
     on the receipt. Never output a date in the future. If the receipt shows NO date at all, OMIT \
-    `date` entirely — the app stamps it with the current date and time. Never guess a date.
+    `date` entirely — the app stamps it with the current date and time. Never guess a date. \
+    If you ever emit several drafts for one event (same purchase, same day), they MUST all \
+    carry the exact same date — differing years or days between items bought together is always \
+    a mistake.
     - Read the printed currency from the receipt (€, $, £, currency code or country tax \
     label). Only fall back to the user's default if truly unreadable.
     - Set `payment_method` from receipt cues: 'cash' if you see CASH/PAID CASH/change due, \
