@@ -101,6 +101,50 @@ final class ReceiptDateTests: XCTestCase {
         XCTAssertEqual(AIService.parseReceiptDate(nil).timeIntervalSince1970, now, accuracy: 5)
         XCTAssertEqual(AIService.parseReceiptDate("not a date").timeIntervalSince1970, now, accuracy: 5)
     }
+
+    private let fixedNow = Date(timeIntervalSince1970: 1_750_000_000)   // mid-2025
+
+    func test_futureDate_clampsToNow() {
+        // A receipt can't be from the future — a forward-dated row (clock
+        // skew, a misread year) falls back to now instead of parking spend
+        // in a month that hasn't happened.
+        XCTAssertEqual(AIService.parseReceiptDate("2999-01-01", now: fixedNow), fixedNow)
+    }
+
+    func test_pastDate_keptAsIs() {
+        let d = AIService.parseReceiptDate("2020-03-04", now: fixedNow)
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        XCTAssertEqual(c.year, 2020); XCTAssertEqual(c.month, 3); XCTAssertEqual(c.day, 4)
+    }
+
+    func test_isoDay_isTenCharsAndYearPrefixed() {
+        let s = AIService.isoDay(fixedNow)
+        XCTAssertEqual(s.count, 10)
+        XCTAssertEqual(String(s.prefix(4)), "2025")
+    }
+}
+
+final class DraftReviewSignalTests: XCTestCase {
+
+    private func draft(confidence: Double, questions: [String]?) -> ExtractedDraft {
+        ExtractedDraft(date: Date(), amount: -9.24, currency: "EUR", payee: "SuperValu",
+                       lineItems: [], confidence: confidence, questions: questions)
+    }
+
+    func test_confidentNoQuestions_doesNotNeedReview() {
+        XCTAssertFalse(draft(confidence: 0.9, questions: nil).needsReview())
+        XCTAssertFalse(draft(confidence: 0.9, questions: []).needsReview())
+    }
+
+    func test_lowConfidence_needsReview() {
+        XCTAssertTrue(draft(confidence: 0.5, questions: nil).needsReview())
+    }
+
+    func test_questionsForceReview_evenWhenConfident() {
+        let d = draft(confidence: 0.95, questions: ["Some item prices were unreadable — please check."])
+        XCTAssertTrue(d.needsReview())
+        XCTAssertEqual(d.questionList.count, 1)
+    }
 }
 
 final class ExpandQuantitiesTests: XCTestCase {

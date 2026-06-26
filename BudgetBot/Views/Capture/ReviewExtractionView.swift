@@ -224,6 +224,18 @@ private struct DraftRow: View {
                 ConfidencePill(value: draft.confidence)
             }
 
+            if !draft.questionList.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(draft.questionList, id: \.self) { q in
+                        Label(q, systemImage: "questionmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+
             DecimalField(amount: $draft.amount, currency: draft.currency)
 
             if !draft.lineItems.isEmpty {

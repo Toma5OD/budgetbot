@@ -100,15 +100,16 @@ final class CaptureQueueService {
 
     // MARK: - Internals
 
-    /// YOLO auto-saves only when every draft cleared the confidence floor.
-    /// A draft the AI marked uncertain (ambiguous item, category, or total)
-    /// drops below it and is routed to review instead — so even hands-off
-    /// mode asks the user when it genuinely can't tell. Vacuously true for
-    /// an empty batch (nothing to save and nothing to ask).
+    /// YOLO auto-saves only when every draft is clear of doubt — it cleared
+    /// the confidence floor AND the AI raised no questions about anything it
+    /// couldn't read. A draft the AI marked uncertain (faded total, illegible
+    /// prices, an ambiguous date, an odd item) is routed to review instead, so
+    /// even hands-off mode asks the user when the OCR is genuinely too poor to
+    /// trust. Vacuously true for an empty batch (nothing to save, nothing to ask).
     nonisolated static let yoloConfidenceFloor = 0.7
-    nonisolated static func allConfident(_ drafts: [ExtractedDraft],
-                                         floor: Double = yoloConfidenceFloor) -> Bool {
-        drafts.allSatisfy { $0.confidence >= floor }
+    nonisolated static func allClear(_ drafts: [ExtractedDraft],
+                                     floor: Double = yoloConfidenceFloor) -> Bool {
+        drafts.allSatisfy { !$0.needsReview(confidenceFloor: floor) }
     }
 
     private func drain() async {
@@ -227,13 +228,14 @@ final class CaptureQueueService {
             }
             job.drafts = drafts
 
-            if job.yoloMode && Self.allConfident(drafts) {
+            if job.yoloMode && Self.allClear(drafts) {
                 commitDrafts(job: job, drafts: drafts, accounts: accounts)
                 job.status = .committed
                 job.draftsJSON = nil
             } else {
-                // Not YOLO, or YOLO with a low-confidence draft — let the
-                // user confirm. This is the AI "asking when unsure".
+                // Not YOLO, or the AI was unsure about a row (low confidence
+                // or it raised questions about something it couldn't read) —
+                // let the user confirm. This is the AI "asking when unsure".
                 job.status = .awaitingReview
             }
             job.completedAt = .now

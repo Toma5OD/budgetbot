@@ -218,6 +218,11 @@ struct AIService {
                         "confidence": [
                             "type": "number",
                             "description": "0..1 — how sure you are about this row."
+                        ],
+                        "questions": [
+                            "type": "array",
+                            "items": ["type": "string"],
+                            "description": "Specific things you need the USER to confirm because you couldn't read them confidently — a faded total, illegible line-item prices, an ambiguous date/year, a smudged merchant name. Phrase each as one short plain question, e.g. 'Couldn't read the total clearly — is it €9.24?' or 'Some item prices were unreadable — please check the items.' Leave empty when you're confident. WHENEVER you add a question, also set `confidence` below 0.7."
                         ]
                     ],
                     "required": ["amount", "payee", "confidence"]
@@ -266,9 +271,12 @@ struct AIService {
 
     OTHER RULES:
     - `amount` is signed: negative = expense, positive = income.
-    - `date`: the transaction's date as yyyy-MM-dd. If the receipt also prints a time, include \
-    it as yyyy-MM-dd'T'HH:mm (24-hour, local). If the receipt shows NO date at all, OMIT `date` \
-    entirely — the app stamps it with the current date and time. Never guess a date.
+    - `date`: the transaction's date as yyyy-MM-dd, plus the time as yyyy-MM-dd'T'HH:mm \
+    (24-hour, local) when the receipt prints one. The user message states TODAY'S date — use it \
+    to resolve ambiguity: if the receipt's year is not clearly printed, assume the CURRENT year, \
+    and never output a year earlier than last year unless a full 4-digit year is plainly legible \
+    on the receipt. Never output a date in the future. If the receipt shows NO date at all, OMIT \
+    `date` entirely — the app stamps it with the current date and time. Never guess a date.
     - Read the printed currency from the receipt (€, $, £, currency code or country tax \
     label). Only fall back to the user's default if truly unreadable.
     - Set `payment_method` from receipt cues: 'cash' if you see CASH/PAID CASH/change due, \
@@ -281,9 +289,13 @@ struct AIService {
     set `account_hint` to that account's exact name.
     - `payee` is the merchant's name as you'd say it in conversation. Strip noise: "TESCO \
     DUBLIN 04 *MOBILE" → "Tesco". "CHEMIST WAREHOUSE STH KING ST" → "Chemist Warehouse".
-    - Never invent a transaction. Set `confidence` low (below 0.7) whenever anything is \
-    unclear — a hard-to-read total, an ambiguous item, or a category you're unsure of. Low \
-    confidence routes the draft to the user for a quick confirmation rather than auto-saving it.
+    - Never invent a transaction. If the image or OCR text is poor and you cannot confidently \
+    read something that matters — the total, line-item prices, the date, the merchant — DO NOT \
+    paper over it. Instead: (a) make your best-effort guess, (b) set `confidence` below 0.7, and \
+    (c) add a specific entry to `questions` naming exactly what you couldn't read (e.g. \
+    "Couldn't read the total clearly — is it €9.24?"). Never bury an OCR problem in `note` while \
+    leaving `confidence` high — that silently saves a guess. A low-confidence draft with clear \
+    questions routes to the user for a quick confirmation instead of auto-saving.
     - Do not produce prose — only call the tool.
     """
 
@@ -343,7 +355,10 @@ struct AIService {
             }
         }
 
-        var trailer = "Default currency: \(defaultCurrency)."
+        // Anchor the model in real time — without this it dates receipts
+        // with an unclear year to its training-era guess (often a year in
+        // the past), which silently drops them out of "this month".
+        var trailer = "Today's date is \(Self.isoDay(Date())). Default currency: \(defaultCurrency)."
         if !accounts.isEmpty {
             let json = (try? JSONEncoder().encode(accounts)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             trailer += " The user's accounts: \(json). Set `account_hint` to one of these names when confident."
@@ -1238,17 +1253,33 @@ struct AIService {
     /// printed a time, a plain date otherwise. No date at all (nil/empty
     /// or unparseable) → the current date and time, so a receipt that
     /// doesn't show when it happened is stamped now.
-    static func parseReceiptDate(_ raw: String?) -> Date {
-        guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return Date() }
+    static func parseReceiptDate(_ raw: String?, now: Date = Date()) -> Date {
+        guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return now }
         let df = DateFormatter()
         df.calendar = Calendar(identifier: .iso8601)
         df.locale = Locale(identifier: "en_US_POSIX")
         df.timeZone = .current
         for format in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
             df.dateFormat = format
-            if let d = df.date(from: raw) { return d }
+            if let d = df.date(from: raw) {
+                // A receipt can't be from the future. If the model returned a
+                // forward-dated row (clock skew, a misread year), fall back to
+                // now rather than parking spend in a month that hasn't happened.
+                return d > now ? now : d
+            }
         }
-        return Date()
+        return now
+    }
+
+    /// `yyyy-MM-dd` for the given instant — used to tell the model what day
+    /// it is so it doesn't guess the year on receipts with a faded date.
+    static func isoDay(_ date: Date) -> String {
+        let df = DateFormatter()
+        df.calendar = Calendar(identifier: .iso8601)
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = .current
+        df.dateFormat = "yyyy-MM-dd"
+        return df.string(from: date)
     }
 
     static func backoffSeconds(attempt: Int) -> Double {
@@ -1295,7 +1326,8 @@ struct AIService {
             cardBrand: w.card_brand,
             cardLast4: last4,
             lineItems: items,
-            confidence: w.confidence ?? 0.5
+            confidence: w.confidence ?? 0.5,
+            questions: w.questions?.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         )
     }
 }

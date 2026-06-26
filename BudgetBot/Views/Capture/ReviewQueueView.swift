@@ -399,6 +399,10 @@ private struct DraftReviewCard: View {
                         .foregroundStyle(.secondary)
                 }
 
+                if !draft.questionList.isEmpty {
+                    questionsCallout
+                }
+
                 if !draft.lineItems.isEmpty {
                     Divider()
                     VStack(alignment: .leading, spacing: 4) {
@@ -493,6 +497,30 @@ private struct DraftReviewCard: View {
     private var progressFraction: Double {
         guard progress.1 > 0 else { return 0 }
         return Double(progress.0) / Double(progress.1)
+    }
+
+    /// Amber "the AI couldn't read this" panel. Shows the model's specific
+    /// questions so the user knows exactly what to confirm before saving.
+    @ViewBuilder
+    private var questionsCallout: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Couldn't read it all — quick check?", systemImage: "questionmark.circle.fill")
+                .font(.caption.bold())
+                .foregroundStyle(.orange)
+            ForEach(draft.questionList, id: \.self) { q in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("•").foregroundStyle(.orange)
+                    Text(q)
+                }
+                .font(.caption)
+            }
+            Text("Fix anything that's off, then Accept — or Rescan with a hint.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

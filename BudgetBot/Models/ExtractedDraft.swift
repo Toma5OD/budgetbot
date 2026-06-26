@@ -26,11 +26,28 @@ struct ExtractedDraft: Identifiable, Codable, Hashable {
     var cardLast4: String?
     var lineItems: [LineItem]
     var confidence: Double
+    /// Specific things the AI needs the user to confirm because it couldn't
+    /// read them confidently — "Couldn't read the total, is it €9.24?",
+    /// "Some line-item prices were illegible". Optional so older persisted
+    /// drafts (encoded before this field existed) still decode.
+    var questions: [String]?
 
     enum PaymentMethod: String, Codable, Hashable {
         case cash
         case card
         case unknown
+    }
+
+    /// Non-optional accessor for the AI's open questions.
+    var questionList: [String] { questions ?? [] }
+
+    /// Should this draft be shown to the user before it's saved, even in
+    /// hands-off (YOLO) mode? True when the AI is unsure — it either scored
+    /// the row below the confidence floor or raised explicit questions about
+    /// something it couldn't read. This is the single source of truth for
+    /// "don't just save it, ask."
+    func needsReview(confidenceFloor: Double = 0.7) -> Bool {
+        confidence < confidenceFloor || !questionList.isEmpty
     }
 
     struct LineItem: Codable, Hashable, Identifiable {
@@ -56,6 +73,7 @@ struct ExtractedDraftWire: Codable {
     let card_last4: String?      // 4-digit string
     let line_items: [LineItemWire]?
     let confidence: Double?
+    let questions: [String]?
 
     struct LineItemWire: Codable {
         let description: String
