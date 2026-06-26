@@ -296,6 +296,14 @@ struct AIService {
     "Couldn't read the total clearly — is it €9.24?"). Never bury an OCR problem in `note` while \
     leaving `confidence` high — that silently saves a guess. A low-confidence draft with clear \
     questions routes to the user for a quick confirmation instead of auto-saving.
+    - Some inputs are SPOKEN transcripts, not receipts. They may contain filler words, \
+    self-corrections ("no wait", "scratch that", "do that again"), and spelled-out names \
+    ("that's R-A-B-E-L-O" → payee "Rabelo"). Interpret the user's FINAL intent: apply the \
+    corrections, join spelled-out letters into the name, resolve relative dates ("last \
+    Wednesday", "this morning") against today's date, and treat an address as the merchant's \
+    location rather than the payee. One spoken sentence can describe several purchases from a \
+    single seller — emit a per-category split for each item (a haircut → Personal Care, a \
+    football jersey → Clothing) under that one merchant, exactly like a multi-item receipt.
     - Do not produce prose — only call the tool.
     """
 
