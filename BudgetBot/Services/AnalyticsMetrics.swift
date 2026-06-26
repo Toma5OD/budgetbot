@@ -17,7 +17,13 @@ enum AnalyticsMetrics {
         let necessary: Decimal
         let discretionary: Decimal
         let regret: Decimal
-        /// Total of all three buckets — convenience for ratio rendering.
+        /// Expense we couldn't honestly classify — no category, or a custom
+        /// one we don't recognise. Surfaced (not dropped) so the UI can say
+        /// "€X not counted" instead of letting groceries silently vanish from
+        /// the split, which reads as the feature being broken.
+        var excluded: Decimal = 0
+        /// Total of the three *classified* buckets — convenience for ratio
+        /// rendering. Excludes the unclassified amount on purpose.
         var total: Decimal { necessary + discretionary + regret }
     }
 
@@ -33,6 +39,7 @@ enum AnalyticsMetrics {
         var necessary: Decimal = 0
         var discretionary: Decimal = 0
         var regret: Decimal = 0
+        var excluded: Decimal = 0
 
         for tx in txs where tx.amount < 0 {
             let slices = tx.categorisedSlices(in: base, liveConvert: convert)
@@ -45,12 +52,13 @@ enum AnalyticsMetrics {
                     case .necessary:     necessary += amt
                     case .regret:        regret += amt
                     case .discretionary: discretionary += amt
-                    case .none:          break   // unclassifiable — excluded, not a "want"
+                    case .none:          excluded += amt   // unclassifiable — tracked, not a "want"
                     }
                 }
             }
         }
-        return NeedVsWant(necessary: necessary, discretionary: discretionary, regret: regret)
+        return NeedVsWant(necessary: necessary, discretionary: discretionary,
+                          regret: regret, excluded: excluded)
     }
 
     // MARK: - Regret / Dickhead Index

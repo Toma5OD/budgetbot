@@ -55,6 +55,27 @@ final class AnalyticsMetricsTests: XCTestCase {
         XCTAssertEqual(split.necessary,     1000)
         XCTAssertEqual(split.discretionary, 50)
         XCTAssertEqual(split.regret,        30)
+        XCTAssertEqual(split.excluded,      0)
+    }
+
+    func test_needVsWant_uncategorisedAndUnknown_goToExcludedNotWants() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+
+        let groceries = makeCategory(ctx, "Groceries")
+        let custom    = makeCategory(ctx, "Vape Shop")   // not in any bucket
+
+        _ = makeTx(ctx, amount: -40, payee: "SuperValu", category: groceries)
+        _ = makeTx(ctx, amount: -25, payee: "Mystery",   category: nil)        // uncategorised
+        _ = makeTx(ctx, amount: -15, payee: "Vapes",      category: custom)     // unknown category
+
+        let split = AnalyticsMetrics.needVsWant(
+            in: [Transaction](try ctx.fetch(FetchDescriptor<Transaction>())),
+            base: "EUR", convert: identityConvert)
+
+        XCTAssertEqual(split.necessary,     40, "groceries are a need")
+        XCTAssertEqual(split.discretionary, 0,  "nothing should be silently dumped into wants")
+        XCTAssertEqual(split.excluded,      40, "uncategorised + unknown category are tracked as excluded")
     }
 
     func test_needVsWant_regretFlaggedTxAlwaysCountsAsRegret() throws {

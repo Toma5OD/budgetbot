@@ -22,6 +22,7 @@ struct HomeView: View {
     private var rules: [RecurringRule]
 
     @State private var showAddAccount = false
+    @State private var retagged: Int?
     @Binding var selectedTab: Int
 
     private var base: String {
@@ -35,7 +36,7 @@ struct HomeView: View {
                     greeting
                     monthHero
                     quickActions
-                    if needVsWantSplit.total > 0 { needVsWantCard }
+                    if needVsWantSplit.total > 0 || needVsWantSplit.excluded > 0 { needVsWantCard }
                     if hasRecentSpend { monthlyTrendCard }
                     goalsStrip
                     accountsStrip
@@ -356,6 +357,25 @@ struct HomeView: View {
                     Text("\(CurrencyFormatter.string(for: wants, currency: base)) · \(100 - needsPct)%")
                         .font(.callout.bold().monospacedDigit())
                 }
+            }
+
+            if split.excluded > 0 {
+                Divider()
+                Button {
+                    retagged = CategoryBackfill.run(in: context)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wand.and.stars")
+                        Text(retagged.map { "Sorted \($0) — pull to refresh" }
+                             ?? "\(CurrencyFormatter.string(for: split.excluded, currency: base)) uncategorised, not counted — tap to sort by merchant")
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(theme.current.tint)
+                }
+                .buttonStyle(.plain)
+                .disabled(retagged != nil)
             }
         }
         .padding(16)
