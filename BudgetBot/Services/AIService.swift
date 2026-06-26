@@ -1277,13 +1277,41 @@ struct AIService {
         for format in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
             df.dateFormat = format
             if let d = df.date(from: raw) {
-                // A receipt can't be from the future. If the model returned a
-                // forward-dated row (clock skew, a misread year), fall back to
-                // now rather than parking spend in a month that hasn't happened.
-                return d > now ? now : d
+                return Self.biasTowardPresent(d, now: now)
             }
         }
         return now
+    }
+
+    /// Receipts uploaded this year are almost always *from* this year — but a
+    /// faded or partly-legible year makes the model guess last year, parking
+    /// the spend ~12 months in the past (and out of "this month"). This kept
+    /// happening, so the prompt instruction isn't enough — we correct it here.
+    ///
+    /// Rules, in order:
+    ///   • A receipt can't be from the future → clamp a forward-dated row to now.
+    ///   • A date that's roughly a year stale (≈11–13½ months) is the classic
+    ///     "right day, wrong year" misread → re-anchor its month/day to the most
+    ///     recent occurrence that isn't in the future (this year if that hasn't
+    ///     passed yet, otherwise last year — so a July date in June stays put).
+    ///   • Anything else (genuinely recent, or clearly well over a year old and
+    ///     therefore a deliberate old receipt) is left exactly as read.
+    static func biasTowardPresent(_ date: Date, now: Date) -> Date {
+        if date > now { return now }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = .current
+        let daysOld = cal.dateComponents([.day], from: date, to: now).day ?? 0
+        guard (330...410).contains(daysOld) else { return date }
+
+        var comps = cal.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        let nowYear = cal.component(.year, from: now)
+        for year in stride(from: nowYear, through: nowYear - 1, by: -1) {
+            comps.year = year
+            if let candidate = cal.date(from: comps), candidate <= now {
+                return candidate
+            }
+        }
+        return date
     }
 
     /// `yyyy-MM-dd` for the given instant — used to tell the model what day

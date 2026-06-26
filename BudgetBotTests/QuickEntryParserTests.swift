@@ -122,6 +122,44 @@ final class ReceiptDateTests: XCTestCase {
         XCTAssertEqual(s.count, 10)
         XCTAssertEqual(String(s.prefix(4)), "2025")
     }
+
+    // MARK: - biasTowardPresent (the recurring "dated last year" fix)
+
+    private func ymd(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 12) -> Date {
+        var c = DateComponents(); c.year = y; c.month = m; c.day = d; c.hour = h
+        return Calendar(identifier: .gregorian).date(from: c)!
+    }
+    private func year(of date: Date) -> Int { Calendar(identifier: .gregorian).component(.year, from: date) }
+
+    func test_bias_rollsYearAgoMisreadForwardToThisYear() {
+        // A current receipt the model dated to last year → re-anchored to now's year.
+        let out = AIService.biasTowardPresent(ymd(2025, 6, 24), now: ymd(2026, 6, 26))
+        let c = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: out)
+        XCTAssertEqual(c.year, 2026); XCTAssertEqual(c.month, 6); XCTAssertEqual(c.day, 24)
+    }
+
+    func test_bias_keepsGenuinelyRecentDate() {
+        let out = AIService.biasTowardPresent(ymd(2026, 1, 15), now: ymd(2026, 6, 26))  // ~5 months
+        XCTAssertEqual(year(of: out), 2026)
+        XCTAssertEqual(Calendar(identifier: .gregorian).component(.month, from: out), 1)
+    }
+
+    func test_bias_leavesDeliberatelyOldReceiptAlone() {
+        let out = AIService.biasTowardPresent(ymd(2024, 12, 30), now: ymd(2026, 6, 26))  // ~18 months
+        XCTAssertEqual(year(of: out), 2024)
+    }
+
+    func test_bias_yearAgoButThisYearWouldBeFuture_staysLastYear() {
+        // July is after June: this-year July hasn't happened, so a ~1yr-old
+        // July date is genuinely last year and must stay there.
+        let out = AIService.biasTowardPresent(ymd(2025, 7, 20), now: ymd(2026, 6, 26))
+        XCTAssertEqual(year(of: out), 2025)
+    }
+
+    func test_bias_futureClampsToNow() {
+        let now = ymd(2026, 6, 26)
+        XCTAssertEqual(AIService.biasTowardPresent(ymd(2027, 1, 1), now: now), now)
+    }
 }
 
 final class DraftReviewSignalTests: XCTestCase {
