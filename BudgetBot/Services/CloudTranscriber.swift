@@ -90,6 +90,19 @@ enum CloudTranscriber {
     /// falling back to `whisper-1` for keys that don't expose it.
     private static let whisperModels = ["gpt-4o-mini-transcribe", "whisper-1"]
 
+    /// Only the transcript. Decoding a struct (not a flat [String:String])
+    /// means extra fields the newer models add — `usage`, `logprobs` — are
+    /// ignored instead of making the whole decode fail.
+    private struct WhisperResponse: Decodable { let text: String }
+
+    /// Pull the transcript out of an OpenAI transcription response body.
+    /// Tolerant of the `usage`/`logprobs` objects the gpt-4o models include
+    /// (which broke the old flat decode and made every result look empty).
+    /// Returns nil when the body isn't a transcription response at all.
+    static func transcript(fromOpenAIResponse data: Data) -> String? {
+        (try? JSONDecoder().decode(WhisperResponse.self, from: data))?.text
+    }
+
     private static func whisper(_ audio: Data, mimeType: String, key: String) async throws -> String {
         let ext = mimeType.contains("mp4") || mimeType.contains("m4a") ? "m4a"
                 : mimeType.contains("wav") ? "wav" : "m4a"
@@ -109,10 +122,18 @@ enum CloudTranscriber {
                 let (data, resp) = try await URLSession.shared.data(for: req)
                 let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
                 if (200..<300).contains(code) {
-                    let parsed = try? JSONDecoder().decode([String: String].self, from: data)
-                    let text = (parsed?["text"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                    if text.isEmpty { throw TranscribeError.empty }
-                    return text
+                    if let raw = Self.transcript(fromOpenAIResponse: data) {
+                        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if text.isEmpty { throw TranscribeError.empty }   // genuinely silent clip
+                        return text
+                    }
+                    // 200 but not the shape we expected — record a snippet so we
+                    // can see what came back, and try the next model (whisper-1
+                    // returns a plain {"text":…}).
+                    let body = String(data: data, encoding: .utf8) ?? ""
+                    lastError = .http(provider: "OpenAI", code: code,
+                                      body: "unexpected response \(String(body.prefix(120)))")
+                    continue
                 }
                 let body = String(data: data, encoding: .utf8) ?? ""
                 lastError = Self.classify("OpenAI", code, body)

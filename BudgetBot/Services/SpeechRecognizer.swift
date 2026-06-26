@@ -184,6 +184,14 @@ final class SpeechRecognizer {
             clearPending()
             return
         }
+        // A clip with no actual sound (mic muted/covered, nothing said) won't
+        // transcribe — say so plainly instead of letting it come back as a
+        // mystery "empty" from the server.
+        if Self.isLikelySilent(url) {
+            errorMessage = "That recording was silent — check the mic isn't covered or muted, then try again."
+            clearPending()
+            return
+        }
         // Remember which provider this clip is for, so a retry — even after
         // relaunch — uses the right one.
         UserDefaults.standard.set(activeEngine.rawValue, forKey: Self.pendingEngineKey)
@@ -256,6 +264,25 @@ final class SpeechRecognizer {
         try? FileManager.default.removeItem(at: Self.pendingClipURL)
         UserDefaults.standard.removeObject(forKey: Self.pendingEngineKey)
         canRetry = false
+    }
+
+    /// Cheap RMS check on the recorded clip — true when it's effectively
+    /// silence, so we can give a clear reason ("mic muted/covered") instead
+    /// of a mystery empty transcript. Clips are short, so reading it whole is
+    /// fine. Pure/`nonisolated`: no actor state touched.
+    nonisolated static func isLikelySilent(_ url: URL) -> Bool {
+        guard let file = try? AVAudioFile(forReading: url) else { return false }
+        let frames = AVAudioFrameCount(file.length)
+        guard frames > 0,
+              let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames),
+              (try? file.read(into: buf)) != nil,
+              let chan = buf.floatChannelData?[0] else { return false }
+        let n = Int(buf.frameLength)
+        guard n > 0 else { return true }
+        var sumSquares: Float = 0
+        for i in 0..<n { let s = chan[i]; sumSquares += s * s }
+        let rms = (sumSquares / Float(n)).squareRoot()
+        return rms < 0.004    // ≈ -48 dBFS, effectively silence
     }
 
     // MARK: - Shared
