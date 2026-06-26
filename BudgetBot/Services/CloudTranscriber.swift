@@ -9,17 +9,42 @@ enum CloudTranscriber {
 
     enum TranscribeError: LocalizedError {
         case missingKey
-        case http(Int, String)
+        case unauthorized(provider: String, code: Int)
+        case rateLimited(provider: String)
+        case server(provider: String, code: Int)
+        case http(provider: String, code: Int, body: String)
         case empty
         case badResponse
 
         var errorDescription: String? {
             switch self {
-            case .missingKey:        "Add the provider's API key in Settings → API keys."
-            case .http(let c, let m): "Transcription failed (\(c)). \(m)"
-            case .empty:             "Didn't catch any speech — try again."
-            case .badResponse:       "Couldn't read the transcription response."
+            case .missingKey:
+                "No API key for this voice engine — add it in Settings → API keys."
+            case .unauthorized(let p, let c):
+                "\(p) rejected the key (\(c)). Check it in Settings → API keys."
+            case .rateLimited(let p):
+                "\(p) is rate-limiting or out of credit (429). Wait a moment, then Retry."
+            case .server(let p, let c):
+                "\(p) had a server error (\(c)). Your recording is saved — tap Retry."
+            case .http(let p, let c, let m):
+                "\(p) transcription failed (\(c)). \(m)"
+            case .empty:
+                "Didn't catch any speech — the recording was silent or too short."
+            case .badResponse:
+                "Couldn't read the transcription response."
             }
+        }
+    }
+
+    /// Turn an HTTP status + body into the most specific error we can, so
+    /// the user sees *why* it failed (bad key vs quota vs outage) rather
+    /// than a bare code.
+    private static func classify(_ provider: String, _ code: Int, _ body: String) -> TranscribeError {
+        switch code {
+        case 401, 403: return .unauthorized(provider: provider, code: code)
+        case 429:      return .rateLimited(provider: provider)
+        case 500...599: return .server(provider: provider, code: code)
+        default:       return .http(provider: provider, code: code, body: String(body.prefix(160)))
         }
     }
 
@@ -90,7 +115,7 @@ enum CloudTranscriber {
                     return text
                 }
                 let body = String(data: data, encoding: .utf8) ?? ""
-                lastError = .http(code, String(body.prefix(160)))
+                lastError = Self.classify("OpenAI", code, body)
                 // Only try the fallback model on not-found / bad-request.
                 if code != 404 && code != 400 { break }
             } catch let e as TranscribeError {
@@ -142,7 +167,7 @@ enum CloudTranscriber {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else {
-            throw TranscribeError.http(code, String((String(data: data, encoding: .utf8) ?? "").prefix(160)))
+            throw Self.classify("Google Gemini", code, String(data: data, encoding: .utf8) ?? "")
         }
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let candidates = obj["candidates"] as? [[String: Any]],

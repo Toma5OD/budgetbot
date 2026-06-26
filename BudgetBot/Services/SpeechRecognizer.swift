@@ -98,13 +98,28 @@ final class SpeechRecognizer {
                 guard let self else { return }
                 Task { @MainActor in
                     if let result { self.transcript = result.bestTranscription.formattedString }
-                    if error != nil || (result?.isFinal ?? false) { self.stopOnDevice() }
+                    if let error {
+                        // Surface why on-device gave nothing, instead of just
+                        // stopping silently — the user was staring at a dead mic.
+                        if self.transcript.isEmpty {
+                            self.errorMessage = "Didn't catch any speech — try again, or speak a little longer."
+                        }
+                        #if DEBUG
+                        print("⚠️ On-device dictation: \(error)")
+                        #endif
+                        self.stopOnDevice()
+                    } else if result?.isFinal ?? false {
+                        self.stopOnDevice()
+                    }
                 }
             }
             isRecording = true
         } catch {
-            errorMessage = "Couldn't start recording."
+            errorMessage = "Couldn't start recording: \(error.localizedDescription)"
             stopOnDevice()
+            #if DEBUG
+            print("⚠️ On-device recording start failed: \(error)")
+            #endif
         }
     }
 
@@ -142,7 +157,7 @@ final class SpeechRecognizer {
             let rec = try AVAudioRecorder(url: url, settings: settings)
             rec.prepareToRecord()
             guard rec.record() else {
-                errorMessage = "Couldn't start recording."
+                errorMessage = "Couldn't start the microphone — it may be in use by another app."
                 deactivateSession()
                 return
             }
@@ -150,8 +165,11 @@ final class SpeechRecognizer {
             recordingURL = url
             isRecording = true
         } catch {
-            errorMessage = "Couldn't start recording."
+            errorMessage = "Couldn't start recording: \(error.localizedDescription)"
             deactivateSession()
+            #if DEBUG
+            print("⚠️ Cloud recording start failed: \(error)")
+            #endif
         }
     }
 
@@ -189,6 +207,13 @@ final class SpeechRecognizer {
 
     private func transcribe(engine: DictationEngine) {
         errorMessage = nil
+        // Don't burn a round-trip we know will fail — surface offline plainly
+        // and keep the clip so Retry works the moment we're back.
+        guard NetworkMonitor.shared.isOnline else {
+            errorMessage = "You're offline. Your recording is saved — tap Retry when you're back online."
+            canRetry = true
+            return
+        }
         isTranscribing = true
         Task {
             do {
@@ -199,7 +224,17 @@ final class SpeechRecognizer {
                 clearPending()          // success — drop the clip
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                canRetry = true         // keep the clip; let the user retry
+                // A silent/too-short clip won't transcribe on a retry either —
+                // drop it. Everything else (bad key, quota, outage, network) is
+                // worth keeping for another go.
+                if case CloudTranscriber.TranscribeError.empty = error {
+                    clearPending()
+                } else {
+                    canRetry = true
+                }
+                #if DEBUG
+                print("⚠️ Dictation failed [\(engine.providerName)]: \(error)")
+                #endif
             }
             isTranscribing = false
         }
