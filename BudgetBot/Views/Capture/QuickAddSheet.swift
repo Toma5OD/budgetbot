@@ -32,6 +32,19 @@ struct QuickAddSheet: View {
                         Label(err, systemImage: "mic.slash.fill")
                             .font(.caption).foregroundStyle(.orange)
                     }
+                    if speech.canRetry {
+                        Button {
+                            speech.retry()
+                        } label: {
+                            Label(speech.isTranscribing ? "Retrying…" : "Retry transcription",
+                                  systemImage: "arrow.clockwise")
+                                .font(.caption.bold())
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(speech.isTranscribing)
+                        .accessibilityHint("Re-sends your last recording without recording again")
+                    }
                     preview
                     if !accounts.isEmpty { accountPicker }
                     Spacer(minLength: 0)

@@ -20,6 +20,15 @@ final class SpeechRecognizer {
     var isRecording = false
     var isTranscribing = false
     var errorMessage: String?
+    /// A cloud recording is sitting on disk that failed to transcribe (no
+    /// network, rate-limited, server hiccup). The UI shows a Retry button so
+    /// the user never has to say it again. Survives app relaunch.
+    var canRetry = false
+
+    init() {
+        // Surface a clip left over from a previous failed attempt.
+        canRetry = FileManager.default.fileExists(atPath: Self.pendingClipURL.path)
+    }
 
     // On-device
     private var recognizer: SFSpeechRecognizer?
@@ -42,6 +51,8 @@ final class SpeechRecognizer {
     func start() async {
         errorMessage = nil
         transcript = ""
+        // A fresh recording supersedes any clip that failed earlier.
+        clearPending()
         activeEngine = DictationSettings.effectiveEngine(isOnline: NetworkMonitor.shared.isOnline)
 
         guard await authorize(cloud: activeEngine.isCloud) else {
@@ -115,8 +126,12 @@ final class SpeechRecognizer {
             try session.setCategory(.record, mode: .default)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
 
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("budgetbot-dictation.m4a")
+            // Record straight into the persistent pending-clip slot so the
+            // raw audio survives a failed transcription (and an app relaunch)
+            // and can be retried without re-recording.
+            let url = Self.pendingClipURL
+            try? FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? FileManager.default.removeItem(at: url)
             let settings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -125,7 +140,12 @@ final class SpeechRecognizer {
                 AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
             ]
             let rec = try AVAudioRecorder(url: url, settings: settings)
-            rec.record()
+            rec.prepareToRecord()
+            guard rec.record() else {
+                errorMessage = "Couldn't start recording."
+                deactivateSession()
+                return
+            }
             recorder = rec
             recordingURL = url
             isRecording = true
@@ -143,19 +163,64 @@ final class SpeechRecognizer {
 
         guard let url = recordingURL, let data = try? Data(contentsOf: url), !data.isEmpty else {
             errorMessage = "Didn't catch any audio."
+            clearPending()
             return
         }
-        let engineForCall = activeEngine
+        // Remember which provider this clip is for, so a retry — even after
+        // relaunch — uses the right one.
+        UserDefaults.standard.set(activeEngine.rawValue, forKey: Self.pendingEngineKey)
+        transcribe(engine: activeEngine)
+    }
+
+    /// Re-run transcription on the clip that's already on disk. Used both
+    /// after recording and when the user taps Retry — no re-recording.
+    func retry() {
+        guard canRetry, !isBusy else { return }
+        canRetry = false
+        let engine = DictationEngine(rawValue: UserDefaults.standard.string(forKey: Self.pendingEngineKey) ?? "")
+            ?? DictationSettings.effectiveEngine(isOnline: NetworkMonitor.shared.isOnline)
+        guard engine.isCloud else {
+            errorMessage = "Pick a cloud voice engine in Settings to transcribe this."
+            canRetry = true
+            return
+        }
+        transcribe(engine: engine)
+    }
+
+    private func transcribe(engine: DictationEngine) {
+        errorMessage = nil
         isTranscribing = true
         Task {
             do {
-                transcript = try await CloudTranscriber.transcribe(data, mimeType: "audio/m4a", engine: engineForCall)
+                guard let data = try? Data(contentsOf: Self.pendingClipURL), !data.isEmpty else {
+                    throw CloudTranscriber.TranscribeError.empty
+                }
+                transcript = try await CloudTranscriber.transcribe(data, mimeType: "audio/m4a", engine: engine)
+                clearPending()          // success — drop the clip
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                canRetry = true         // keep the clip; let the user retry
             }
             isTranscribing = false
-            try? FileManager.default.removeItem(at: url)
         }
+    }
+
+    // MARK: - Pending clip (offline / failed-transcription retry)
+
+    static let pendingEngineKey = "BudgetBot.dictation.pendingEngine"
+
+    /// Stable on-disk home for the last cloud recording. In Caches so it's
+    /// non-precious but survives backgrounding and relaunch for retries.
+    static var pendingClipURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("PendingDictation", isDirectory: true)
+            .appendingPathComponent("clip.m4a")
+    }
+
+    private func clearPending() {
+        try? FileManager.default.removeItem(at: Self.pendingClipURL)
+        UserDefaults.standard.removeObject(forKey: Self.pendingEngineKey)
+        canRetry = false
     }
 
     // MARK: - Shared
