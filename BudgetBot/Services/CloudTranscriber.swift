@@ -15,12 +15,34 @@ enum CloudTranscriber {
 
         var errorDescription: String? {
             switch self {
-            case .missingKey:        "Add the provider's API key in Settings → Dictation."
+            case .missingKey:        "Add the provider's API key in Settings → API keys."
             case .http(let c, let m): "Transcription failed (\(c)). \(m)"
             case .empty:             "Didn't catch any speech — try again."
             case .badResponse:       "Couldn't read the transcription response."
             }
         }
+    }
+
+    /// Lightweight auth check for a voice provider's key — lists models and
+    /// returns true on a 2xx. Lets the API keys screen tell the user a key is
+    /// good before they rely on it for dictation. No audio, no user content.
+    static func validate(key: String, engine: DictationEngine) async -> Bool {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        var req: URLRequest
+        switch engine {
+        case .whisper:
+            req = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
+            req.setValue("Bearer \(trimmed)", forHTTPHeaderField: "Authorization")
+        case .gemini:
+            req = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models?key=\(trimmed)")!)
+        case .onDevice:
+            return false
+        }
+        req.timeoutInterval = 20
+        guard let (_, resp) = try? await URLSession.shared.data(for: req),
+              let code = (resp as? HTTPURLResponse)?.statusCode else { return false }
+        return (200..<300).contains(code)
     }
 
     static func transcribe(_ audio: Data,

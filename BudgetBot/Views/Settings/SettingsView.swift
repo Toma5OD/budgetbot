@@ -12,7 +12,6 @@ struct SettingsView: View {
     @Query(sort: \UserProfile.createdAt) private var profiles: [UserProfile]
 
     @State private var showSignOutConfirm = false
-    @State private var showRemoveKeyConfirm = false
     @State private var showAppleRevokeSheet = false
 #if DEBUG
     @State private var showLoadDemoConfirm = false
@@ -26,6 +25,19 @@ struct SettingsView: View {
     @State private var notifBudget   = LocalNotificationService.shared.budgetThresholdEnabled
     @State private var savedToast: String?
     @State private var retagMessage: String?
+
+    /// Subtitle for the API keys row — at a glance, what's configured.
+    private var apiKeysSubtitle: String {
+        let claude = KeychainService.shared.get(.anthropicAPIKey) != nil
+        let voice = KeychainService.shared.get(.openAIKey) != nil
+            || KeychainService.shared.get(.geminiKey) != nil
+        switch (claude, voice) {
+        case (true, true):  return "Claude + voice key set"
+        case (true, false): return "Claude set"
+        case (false, true): return "Voice key set · Claude missing"
+        case (false, false): return "Not set"
+        }
+    }
 
     static let availableModels: [(String, String)] = [
         ("claude-sonnet-4-6",          "Sonnet 4.6 · balanced"),
@@ -212,12 +224,10 @@ struct SettingsView: View {
                     RowDivider()
 
                     NavigationLink {
-                        APIKeyManagerView(savedToast: $savedToast,
-                                          showRemoveConfirm: $showRemoveKeyConfirm)
+                        APIKeyManagerView()
                     } label: {
-                        SettingsRow("API key",
-                                    subtitle: KeychainService.shared.get(.anthropicAPIKey) == nil
-                                        ? "Not set" : "Stored in Keychain",
+                        SettingsRow("API keys",
+                                    subtitle: apiKeysSubtitle,
                                     icon: "key.fill",
                                     tint: .orange) {
                             chevronOnly
@@ -766,48 +776,71 @@ private struct AIModelPickerSheet: View {
     }
 }
 
-private struct APIKeyManagerView: View {
-    @Binding var savedToast: String?
-    @Binding var showRemoveConfirm: Bool
-    @State private var newKey: String = ""
-    @State private var validating = false
-    @State private var saveError: String?
+/// Which provider a key belongs to and what role it plays. All API keys
+/// live here — Claude for the core AI, OpenAI / Gemini for voice-to-text —
+/// so the user has one place to manage them, not two.
+enum KeyProvider: String, CaseIterable, Identifiable {
+    case anthropic, openAI, gemini
+    var id: String { rawValue }
 
+    var title: String {
+        switch self {
+        case .anthropic: "Claude (Anthropic)"
+        case .openAI:    "OpenAI"
+        case .gemini:    "Google Gemini"
+        }
+    }
+    /// One-line description of what this key powers.
+    var role: String {
+        switch self {
+        case .anthropic: "Powers everything — reading receipts, itemising, and Ask. Required."
+        case .openAI:    "Voice-to-text (Whisper). Recommended for dictation — most accurate, and Anthropic has no speech model."
+        case .gemini:    "Voice-to-text (alternative to OpenAI). Optional."
+        }
+    }
+    var placeholder: String {
+        switch self {
+        case .anthropic: "sk-ant-…"
+        case .openAI:    "sk-…"
+        case .gemini:    "AIza…"
+        }
+    }
+    var keychainKey: KeychainKey {
+        switch self {
+        case .anthropic: .anthropicAPIKey
+        case .openAI:    .openAIKey
+        case .gemini:    .geminiKey
+        }
+    }
+    /// Where the user gets one.
+    var consoleHint: String {
+        switch self {
+        case .anthropic: "console.anthropic.com → API keys"
+        case .openAI:    "platform.openai.com → API keys"
+        case .gemini:    "aistudio.google.com → API key"
+        }
+    }
+    /// Real auth check so we can confirm a key works before relying on it.
+    func validate(_ key: String) async -> Bool {
+        switch self {
+        case .anthropic: await AIService.validate(key: key)
+        case .openAI:    await CloudTranscriber.validate(key: key, engine: .whisper)
+        case .gemini:    await CloudTranscriber.validate(key: key, engine: .gemini)
+        }
+    }
+}
+
+struct APIKeyManagerView: View {
     var body: some View {
         List {
             Section {
-                HStack {
-                    Image(systemName: KeychainService.shared.get(.anthropicAPIKey) == nil
-                          ? "xmark.circle.fill" : "checkmark.circle.fill")
-                        .foregroundStyle(KeychainService.shared.get(.anthropicAPIKey) == nil ? .red : .green)
-                    Text(KeychainService.shared.get(.anthropicAPIKey) == nil
-                         ? "Not configured" : "Stored in iOS Keychain")
-                    Spacer()
-                }
+                EmptyView()
             } footer: {
-                Text("Used only for requests to api.anthropic.com. We never see it.")
+                Text("BudgetBot runs on Claude (Anthropic) for everything — reading receipts, itemising, and Ask. Voice-to-text is the one job Anthropic has no model for, so dictation uses OpenAI (recommended) or Google Gemini. Every key is stored in the iOS Keychain on this device; we never see them.")
             }
 
-            Section {
-                SecureField("sk-ant-…", text: $newKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.system(.body, design: .monospaced))
-                Button {
-                    Task { await validateAndSave() }
-                } label: {
-                    HStack {
-                        if validating { ProgressView() }
-                        Text(validating ? "Validating…" : "Validate & save key")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty || validating)
-                if let saveError {
-                    Text(saveError).font(.caption).foregroundStyle(.red)
-                }
-            } header: {
-                Text("Replace key")
+            ForEach(KeyProvider.allCases) { provider in
+                ProviderKeySection(provider: provider)
             }
 
             Section {
@@ -838,37 +871,91 @@ private struct APIKeyManagerView: View {
             } footer: {
                 Text("When allowed, content you submit for AI processing — receipt photos or PDFs, attached notes, Ask questions, and transaction summaries needed to answer them — is sent to Anthropic (api.anthropic.com) using your own API key. Nothing is sent without this permission; you're asked the first time you use an AI feature.")
             }
-
-            Section {
-                Button("Remove key", role: .destructive) {
-                    showRemoveConfirm = true
-                }
-            }
         }
         .scrollContentBackground(.hidden)
-        .navigationTitle("API key")
+        .navigationTitle("API keys")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog("Remove the API key?", isPresented: $showRemoveConfirm) {
-            Button("Remove", role: .destructive) {
-                KeychainService.shared.delete(.anthropicAPIKey)
+    }
+}
+
+/// A single provider's key: live status, paste-and-validate, remove.
+/// Real errors are surfaced — no silent failures, no fake "Saved".
+private struct ProviderKeySection: View {
+    let provider: KeyProvider
+
+    @State private var entry = ""
+    @State private var validating = false
+    @State private var error: String?
+    @State private var isSet = false
+
+    var body: some View {
+        Section {
+            HStack {
+                Image(systemName: isSet ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(isSet ? .green : (provider == .anthropic ? .red : .secondary))
+                Text(isSet ? "Stored in Keychain" : (provider == .anthropic ? "Not set — required" : "Not set"))
+                Spacer()
             }
-            Button("Cancel", role: .cancel) {}
+
+            SecureField(provider.placeholder, text: $entry)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(.body, design: .monospaced))
+
+            Button {
+                Task { await save() }
+            } label: {
+                HStack {
+                    if validating { ProgressView() }
+                    Text(validating ? "Validating…" : (isSet ? "Replace key" : "Validate & save"))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .disabled(entry.trimmingCharacters(in: .whitespaces).isEmpty || validating)
+
+            if let error {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+
+            if isSet {
+                Button("Remove", role: .destructive) {
+                    KeychainService.shared.delete(provider.keychainKey)
+                    isSet = false
+                    error = nil
+                }
+            }
+        } header: {
+            Text(provider.title)
+        } footer: {
+            Text("\(provider.role)\nGet one at \(provider.consoleHint).")
         }
+        .onAppear { refresh() }
     }
 
-    private func validateAndSave() async {
-        saveError = nil
+    private func refresh() {
+        let stored = KeychainService.shared.get(provider.keychainKey)
+        isSet = (stored?.isEmpty == false)
+    }
+
+    private func save() async {
+        error = nil
+        let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         validating = true
         defer { validating = false }
-        let trimmed = newKey.trimmingCharacters(in: .whitespaces)
-        let ok = await AIService.validate(key: trimmed)
+
+        let ok = await provider.validate(trimmed)
         guard ok else {
-            saveError = "That key didn't authenticate. Double-check and try again."
+            error = "That key didn't authenticate. Double-check and try again."
             return
         }
-        try? KeychainService.shared.set(trimmed, for: .anthropicAPIKey)
-        newKey = ""
-        savedToast = "Key saved."
+        do {
+            try KeychainService.shared.set(trimmed, for: provider.keychainKey)
+            entry = ""
+            isSet = true
+        } catch {
+            self.error = "Couldn't save to the Keychain. Try again."
+        }
     }
 }
 

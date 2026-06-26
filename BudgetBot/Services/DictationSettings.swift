@@ -30,6 +30,15 @@ enum DictationEngine: String, CaseIterable, Identifiable {
 
     var isCloud: Bool { self != .onDevice }
 
+    /// Human name of the provider whose key this engine needs.
+    var providerName: String {
+        switch self {
+        case .onDevice: "Apple"
+        case .whisper:  "OpenAI"
+        case .gemini:   "Google Gemini"
+        }
+    }
+
     /// Keychain slot for this engine's API key (nil for on-device).
     var keychainKey: KeychainKey? {
         switch self {
